@@ -22,7 +22,9 @@ class DbtAdapterRuntime(WarehouseAdapterProtocol):
             # Keep dbt internals isolated in this module. The concrete adapter lifecycle
             # will be expanded when test-run ingestion needs live warehouse queries.
             from dbt.adapters.factory import get_adapter_class_by_name
+            from dbt.adapters.factory import load_plugin
 
+            load_plugin(self._runtime_profile.target.target_type)
             get_adapter_class_by_name(self._runtime_profile.target.target_type)
         except (ImportError, RuntimeError, ValueError) as exc:
             logger.exception("dbt adapter validation failed")
