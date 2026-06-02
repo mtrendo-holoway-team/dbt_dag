@@ -1,0 +1,12 @@
+.DS_Store
+.env
+.mypy_cache/
+.pycache/
+.pytest_cache/
+__pycache__/
+*.py[cod]
+*.sqlite
+*.sqlite3
+.dbt_dag.sqlite
+node_modules/
+src/dbt_dag/web/static/dist/
