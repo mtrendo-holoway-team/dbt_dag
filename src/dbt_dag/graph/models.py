@@ -9,6 +9,7 @@ class GraphNode:
     label: str
     column: str
     resource_type: str
+    package_name: str
     description: str
     indicators: list[str]
 

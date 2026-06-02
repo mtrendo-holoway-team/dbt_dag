@@ -19,6 +19,7 @@ def test_graph_builder_emits_stable_nodes_and_edges(dbt_project: Path) -> None:
         "model.demo.stg_orders",
         "model.demo.fct_orders",
     }
+    assert {node.package_name for node in graph.nodes} == {"demo"}
     assert {edge.edge_id for edge in graph.edges} == {
         "source.demo.raw.orders->model.demo.stg_orders",
         "model.demo.stg_orders->model.demo.fct_orders",

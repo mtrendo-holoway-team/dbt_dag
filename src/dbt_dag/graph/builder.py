@@ -45,6 +45,7 @@ def build_graph(manifest: DbtManifest) -> GraphPayload:
             label=node.name,
             column=classify_node(node),
             resource_type=node.resource_type,
+            package_name=node.package_name,
             description=node.description,
             indicators=[],
         )

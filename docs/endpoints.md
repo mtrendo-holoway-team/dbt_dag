@@ -6,6 +6,7 @@
 - `GET /inspector/project`: Render the project inspector partial.
 - `GET /inspector/node/{node_id}`: Render the selected node inspector partial.
 - `GET /tasks/node/{node_id}`: Return node task state as JSON.
+- `GET /static/{file_path}`: Serve source static files and built Vite assets from `static/dist`.
 
 ## API
 

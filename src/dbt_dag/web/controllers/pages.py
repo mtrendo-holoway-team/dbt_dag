@@ -14,6 +14,8 @@ from dbt_dag.web.render import render_page
 from dbt_dag.web.render import render_project_inspector
 from dbt_dag.web.state import AppState
 
+STATIC_ROOT = Path(__file__).parents[1] / "static"
+
 
 def _state(request: Request[Any, Any, Any]) -> AppState:
     return cast(AppState, request.app.state["app_state"])
@@ -73,9 +75,9 @@ class PagesController(Controller):
 
     @get("/static/{file_path:path}")
     async def static_file(self, file_path: str) -> Response[str]:
-        static_root = Path(__file__).parents[1] / "static"
-        requested = (static_root / file_path).resolve()
-        if static_root.resolve() not in requested.parents:
+        static_root = STATIC_ROOT.resolve()
+        requested = (static_root / file_path.lstrip("/")).resolve()
+        if requested != static_root and static_root not in requested.parents:
             return Response(content="", status_code=404)
         if not requested.exists() or not requested.is_file():
             return Response(content="", status_code=404)
@@ -92,6 +94,7 @@ def _graph_payload(graph: Any) -> dict[str, Any]:
                 "label": node.label,
                 "column": node.column,
                 "resource_type": node.resource_type,
+                "package_name": node.package_name,
                 "description": node.description,
                 "indicators": node.indicators,
             }
