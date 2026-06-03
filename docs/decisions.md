@@ -97,3 +97,11 @@
 - Context: Configuring concrete generated artifact paths in `.env` makes local setup more brittle.
 - Decision: Configure only the dbt project directory in `.env`; derive manifest path as `target/manifest.json` under that project.
 - Consequences: The app no longer supports `DBT_MANIFEST_PATH`; custom manifest locations require a future documented decision.
+
+## ADR-0013 ELK DAG Layout Engine
+
+- Created: 2026-06-03
+- Status: active
+- Context: The DAG view needs stable left-to-right dependency layout, labeled rectangular nodes, and fewer edge crossings than the Sigma force-style renderer provides.
+- Decision: Use ELK.js layered layout to order DAG nodes, then render the result with first-party SVG and HTML.
+- Consequences: Frontend graph rendering depends on `elkjs`; the backend graph payload remains the source of node and edge data, and visual swimlanes are derived in the browser.

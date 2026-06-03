@@ -38,7 +38,7 @@ def render_page() -> str:
         <div id="package-filters" class="flex min-w-0 flex-wrap items-center gap-2 text-xs text-zinc-300"></div>
       </div>
       <div id="search-popup" class="absolute left-4 top-28 z-20 hidden w-80 rounded border border-zinc-700 bg-zinc-900 shadow-xl"></div>
-      <div id="graph-root" class="h-full w-full"></div>
+      <div id="graph-root" class="h-full w-full overflow-hidden"></div>
     </section>
     <aside id="inspector" class="overflow-auto bg-zinc-900 p-5" hx-get="/inspector/project" hx-trigger="load">
     </aside>

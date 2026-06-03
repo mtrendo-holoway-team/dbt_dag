@@ -1,26 +1,8 @@
-import Graph from "graphology";
 import htmx from "htmx.org";
-import Sigma from "sigma";
 
-type GraphNode = {
-  id: string;
-  label: string;
-  column: string;
-  resource_type: string;
-  package_name: string;
-};
-
-type GraphEdge = {
-  id: string;
-  source: string;
-  target: string;
-};
-
-type GraphPayload = {
-  columns: string[];
-  nodes: GraphNode[];
-  edges: GraphEdge[];
-};
+import { layoutGraph } from "./graph_layout";
+import { getCenterAnchor, renderGraph } from "./graph_svg";
+import type { FilterMode, GraphNode, GraphPayload, LayoutState, ViewAnchor } from "./graph_types";
 
 declare global {
   interface Window {
@@ -28,31 +10,12 @@ declare global {
   }
 }
 
-type FilterMode = "upstream" | "downstream" | "reset";
-type PackageChangeHandler = (packageName: string, enabled: boolean) => void;
+type PackageChangeHandler = (packageName: string, enabled: boolean) => void | Promise<void>;
 
 type FilterEvent = CustomEvent<{
   mode?: FilterMode;
 }>;
 
-const colors: Record<string, string> = {
-  sources: "#38bdf8",
-  stg: "#22c55e",
-  int: "#eab308",
-  marts: "#f97316",
-  exposures: "#a78bfa",
-  other: "#94a3b8"
-};
-
-const edgeColor = "#3f3f46";
-const relatedEdgeColor = "#94a3b8";
-const dimmedColor = "#27272a";
-const selectedColor = "#f8fafc";
-
-const nodeSize = 8;
-const selectedNodeSize = 13;
-const relatedNodeSize = 10;
-const dimmedNodeSize = 5;
 const defaultHiddenPackages = new Set(["dbt_project_evaluator"]);
 
 async function loadGraph(): Promise<void> {
@@ -61,114 +24,112 @@ async function loadGraph(): Promise<void> {
 
   const response = await fetch("/api/graph");
   const payload = (await response.json()) as GraphPayload;
-  const graph = new Graph();
-  const byColumn = new Map<string, GraphNode[]>();
-  const nodesById = new Map(payload.nodes.map((node) => [node.id, node]));
   const activePackages = new Set(
     graphPackages(payload.nodes).filter((packageName) => !defaultHiddenPackages.has(packageName))
   );
-  const columnIndexByName = new Map(payload.columns.map((column, index) => [column, index]));
-  const downstream = new Map<string, Set<string>>();
-  const upstream = new Map<string, Set<string>>();
-
-  for (const column of payload.columns) byColumn.set(column, []);
-  for (const node of payload.nodes) {
-    byColumn.get(node.column)?.push(node);
-    downstream.set(node.id, new Set());
-    upstream.set(node.id, new Set());
-  }
-
-  for (const edge of payload.edges) {
-    if (!nodesById.has(edge.source) || !nodesById.has(edge.target)) continue;
-    downstream.get(edge.source)?.add(edge.target);
-    upstream.get(edge.target)?.add(edge.source);
-  }
-
-  const columnWidth = Math.max(300, container.clientWidth / Math.max(payload.columns.length, 1));
-  const graphPaddingX = 120;
-  const graphPaddingY = 90;
-  for (const [columnIndex, column] of payload.columns.entries()) {
-    const columnNodes = sortColumnNodes(
-      byColumn.get(column) ?? [],
-      upstream,
-      downstream,
-      nodesById,
-      columnIndexByName
-    );
-    const rowGap = Math.max(
-      72,
-      (container.clientHeight - graphPaddingY * 2) / Math.max(columnNodes.length - 1, 1)
-    );
-    columnNodes.forEach((node, rowIndex) => {
-      graph.addNode(node.id, {
-        label: node.label,
-        x: graphPaddingX + columnIndex * columnWidth,
-        y: graphPaddingY + rowIndex * rowGap,
-        size: nodeSize,
-        color: nodeColor(node),
-        baseColor: nodeColor(node),
-        baseSize: nodeSize,
-        packageName: node.package_name
-      });
-    });
-  }
-
-  for (const edge of payload.edges) {
-    if (graph.hasNode(edge.source) && graph.hasNode(edge.target)) {
-      graph.addEdgeWithKey(edge.id, edge.source, edge.target, {
-        color: edgeColor,
-        baseColor: edgeColor,
-        size: 1,
-        baseSize: 1
-      });
-    }
-  }
-
-  const renderer = new Sigma(graph, container, {
-    allowInvalidContainer: true,
-    defaultEdgeColor: edgeColor,
-    defaultNodeColor: colors.other,
-    labelDensity: 0.08,
-    labelGridCellSize: 90,
-    labelRenderedSizeThreshold: 8
-  });
-
-  let selectedNodeId: string | null = null;
+  const { upstream, downstream } = buildAdjacency(payload);
+  const state: LayoutState = {
+    layout: await layoutGraph(payload, activePackages),
+    upstream,
+    downstream,
+    activePackages,
+    selectedNodeId: null,
+    filterMode: null
+  };
+  let renderVersion = 0;
+  let layoutVersion = 0;
 
   window.dbtDagSelectNode = selectNode;
-  renderer.on("clickNode", ({ node }) => selectNode(node));
-  renderPackageFilters(payload.nodes, activePackages, (packageName, enabled) => {
+  renderPackageFilters(payload.nodes, activePackages, async (packageName, enabled) => {
+    const nextPackages = new Set(state.activePackages);
     if (enabled) {
-      activePackages.add(packageName);
+      nextPackages.add(packageName);
     } else {
-      activePackages.delete(packageName);
+      nextPackages.delete(packageName);
     }
-    applySelection(graph, renderer, selectedNodeId, null, upstream, downstream, activePackages);
+    const anchor = getCenterAnchor(container, state.layout, visibleNodeIds(payload.nodes, nextPackages));
+    const currentLayoutVersion = (layoutVersion += 1);
+    const nextLayout = await layoutGraph(payload, nextPackages);
+    if (currentLayoutVersion !== layoutVersion) return;
+    state.activePackages = nextPackages;
+    state.layout = nextLayout;
+    if (state.selectedNodeId && !state.layout.nodes.has(state.selectedNodeId)) {
+      state.selectedNodeId = null;
+      state.filterMode = null;
+    }
+    renderCurrentGraph(false, anchor);
   });
-  applySelection(graph, renderer, null, null, upstream, downstream, activePackages);
+  renderCurrentGraph(true);
 
   document.addEventListener("dbt-dag-filter", (event) => {
     const mode = (event as FilterEvent).detail.mode;
     if (!mode) return;
     if (mode === "reset") {
-      applySelection(graph, renderer, null, null, upstream, downstream, activePackages);
+      state.selectedNodeId = null;
+      state.filterMode = null;
+      renderCurrentGraph(false);
       return;
     }
-    if (!selectedNodeId) return;
-    applySelection(graph, renderer, selectedNodeId, mode, upstream, downstream, activePackages);
+    if (!state.selectedNodeId) return;
+    state.filterMode = mode;
+    renderCurrentGraph(false);
   });
 
+  function renderCurrentGraph(fit = false, anchor: ViewAnchor | null = null): void {
+    const currentVersion = (renderVersion += 1);
+    const relatedNodes = state.selectedNodeId
+      ? relatedNodeIds(state.selectedNodeId, state.filterMode, state.upstream, state.downstream)
+      : null;
+    if (currentVersion !== renderVersion) return;
+    renderGraph(
+      container,
+      state.layout,
+      relatedNodes,
+      state.selectedNodeId,
+      state.filterMode,
+      selectNode,
+      fit,
+      anchor
+    );
+  }
+
   function selectNode(nodeId: string): void {
-    if (!graph.hasNode(nodeId)) return;
-    selectedNodeId = nodeId;
-    applySelection(graph, renderer, selectedNodeId, null, upstream, downstream, activePackages);
+    if (!state.layout.nodes.has(nodeId)) return;
+    state.selectedNodeId = nodeId;
+    state.filterMode = null;
+    renderCurrentGraph(false);
     openInspector(nodeId);
   }
+}
+
+function buildAdjacency(payload: GraphPayload): {
+  upstream: Map<string, Set<string>>;
+  downstream: Map<string, Set<string>>;
+} {
+  const nodesById = new Map(payload.nodes.map((node) => [node.id, node]));
+  const downstream = new Map<string, Set<string>>();
+  const upstream = new Map<string, Set<string>>();
+  for (const node of payload.nodes) {
+    downstream.set(node.id, new Set());
+    upstream.set(node.id, new Set());
+  }
+  for (const edge of payload.edges) {
+    if (!nodesById.has(edge.source) || !nodesById.has(edge.target)) continue;
+    downstream.get(edge.source)?.add(edge.target);
+    upstream.get(edge.target)?.add(edge.source);
+  }
+  return { upstream, downstream };
 }
 
 function graphPackages(nodes: GraphNode[]): string[] {
   return [...new Set(nodes.map((node) => node.package_name).filter(Boolean))].sort((left, right) =>
     left.localeCompare(right)
+  );
+}
+
+function visibleNodeIds(nodes: GraphNode[], activePackages: Set<string>): Set<string> {
+  return new Set(
+    nodes.filter((node) => activePackages.has(node.package_name)).map((node) => node.id)
   );
 }
 
@@ -201,95 +162,6 @@ function renderPackageFilters(
   );
 }
 
-function sortColumnNodes(
-  nodes: GraphNode[],
-  upstream: Map<string, Set<string>>,
-  downstream: Map<string, Set<string>>,
-  nodesById: Map<string, GraphNode>,
-  columnIndexByName: Map<string, number>
-): GraphNode[] {
-  return [...nodes].sort((left, right) => {
-    const leftConnectivity = connectivityScore(
-      left,
-      upstream,
-      downstream,
-      nodesById,
-      columnIndexByName
-    );
-    const rightConnectivity = connectivityScore(
-      right,
-      upstream,
-      downstream,
-      nodesById,
-      columnIndexByName
-    );
-    if (leftConnectivity !== rightConnectivity) return rightConnectivity - leftConnectivity;
-    return left.label.localeCompare(right.label);
-  });
-}
-
-function connectivityScore(
-  node: GraphNode,
-  upstream: Map<string, Set<string>>,
-  downstream: Map<string, Set<string>>,
-  nodesById: Map<string, GraphNode>,
-  columnIndexByName: Map<string, number>
-): number {
-  const columnIndex = columnIndexByName.get(node.column);
-  if (columnIndex === undefined) return 0;
-  return [...(upstream.get(node.id) ?? []), ...(downstream.get(node.id) ?? [])].filter(
-    (neighborId) => {
-      const neighbor = nodesById.get(neighborId);
-      const neighborColumnIndex = neighbor ? columnIndexByName.get(neighbor.column) : undefined;
-      return neighborColumnIndex !== undefined && Math.abs(neighborColumnIndex - columnIndex) === 1;
-    }
-  ).length;
-}
-
-function nodeColor(node: GraphNode): string {
-  return colors[node.column] ?? colors.other;
-}
-
-function applySelection(
-  graph: Graph,
-  renderer: Sigma,
-  selectedNodeId: string | null,
-  mode: FilterMode | null,
-  upstream: Map<string, Set<string>>,
-  downstream: Map<string, Set<string>>,
-  activePackages: Set<string>
-): void {
-  const relatedNodes = selectedNodeId
-    ? relatedNodeIds(selectedNodeId, mode, upstream, downstream)
-    : null;
-
-  graph.forEachNode((nodeId, attributes) => {
-    const isSelected = selectedNodeId === nodeId;
-    const isRelated = relatedNodes?.has(nodeId) ?? true;
-    const isPackageVisible = activePackages.has(String(attributes.packageName));
-    graph.mergeNodeAttributes(nodeId, {
-      color: nodeStateColor(attributes.baseColor, isSelected, isRelated),
-      hidden: !isPackageVisible,
-      size: nodeStateSize(isSelected, isRelated)
-    });
-  });
-
-  graph.forEachEdge((edgeId, attributes, source, target) => {
-    const sourcePackage = String(graph.getNodeAttribute(source, "packageName"));
-    const targetPackage = String(graph.getNodeAttribute(target, "packageName"));
-    const isPackageVisible = activePackages.has(sourcePackage) && activePackages.has(targetPackage);
-    const isRelated =
-      relatedNodes === null || (relatedNodes.has(source) && relatedNodes.has(target));
-    graph.mergeEdgeAttributes(edgeId, {
-      color: isRelated ? (mode ? relatedEdgeColor : attributes.baseColor) : dimmedColor,
-      hidden: !isPackageVisible,
-      size: isRelated ? (mode ? 2 : attributes.baseSize) : 0.5
-    });
-  });
-
-  renderer.refresh();
-}
-
 function relatedNodeIds(
   selectedNodeId: string,
   mode: FilterMode | null,
@@ -317,18 +189,6 @@ function walkGraph(startNodeId: string, adjacency: Map<string, Set<string>>): Se
   }
 
   return visited;
-}
-
-function nodeStateColor(baseColor: string, isSelected: boolean, isRelated: boolean): string {
-  if (isSelected) return selectedColor;
-  if (isRelated) return baseColor;
-  return dimmedColor;
-}
-
-function nodeStateSize(isSelected: boolean, isRelated: boolean): number {
-  if (isSelected) return selectedNodeSize;
-  if (isRelated) return relatedNodeSize;
-  return dimmedNodeSize;
 }
 
 function openInspector(nodeId: string): void {
