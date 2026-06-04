@@ -1,7 +1,8 @@
+import hotkeys from "hotkeys-js";
 import htmx from "htmx.org";
 
 import { layoutGraph } from "./graph_layout";
-import { getCenterAnchor, getNodeClusterBounds, renderGraph } from "./graph_svg";
+import { getCenterAnchor, renderGraph } from "./graph_svg";
 import { refreshInspectorMetadataBlocks } from "./inspectors";
 import type {
   FilterMode,
@@ -9,8 +10,8 @@ import type {
   GraphPayload,
   LayoutState,
   MetadataRevision,
+  PositionedNode,
   ViewAnchor,
-  ViewBounds
 } from "./graph_types";
 
 declare global {
@@ -51,7 +52,7 @@ async function loadGraph(): Promise<void> {
   let layoutVersion = 0;
   let refreshVersion = 0;
   let currentRevision = await loadMetadataRevision();
-  let pendingFocusBounds: ViewBounds | null = null;
+  let pendingFocusNodeId: string | null = null;
   let lastContainerSize = {
     width: Math.max(container.clientWidth, 0),
     height: Math.max(container.clientHeight, 0)
@@ -112,10 +113,19 @@ async function loadGraph(): Promise<void> {
     renderCurrentGraph(false);
   });
 
-  document.addEventListener("keydown", (event) => {
-    if (event.key !== "Escape") return;
+  hotkeys("esc,left,right,up,down", (event, handler) => {
+    if (isEditableTarget(event.target)) return;
+    if (handler.key === "esc") {
+      if (!state.selectedNodeId) return;
+      event.preventDefault();
+      clearSelection();
+      return;
+    }
     if (!state.selectedNodeId) return;
-    clearSelection();
+    const nextNodeId = nextKeyboardNodeId(handler.key, state);
+    if (!nextNodeId) return;
+    event.preventDefault();
+    selectNode(nextNodeId);
   });
 
   function renderCurrentGraph(fit = false, anchor: ViewAnchor | null = null): void {
@@ -124,8 +134,8 @@ async function loadGraph(): Promise<void> {
       ? relatedNodeIds(state.selectedNodeId, state.filterMode, state.upstream, state.downstream)
       : null;
     if (currentVersion !== renderVersion) return;
-    const focusBounds = pendingFocusBounds;
-    pendingFocusBounds = null;
+    const focusNodeId = pendingFocusNodeId;
+    pendingFocusNodeId = null;
     renderGraph(
       container,
       state.layout,
@@ -135,7 +145,7 @@ async function loadGraph(): Promise<void> {
       selectNode,
       fit,
       anchor,
-      focusBounds
+      focusNodeId
     );
   }
 
@@ -143,17 +153,13 @@ async function loadGraph(): Promise<void> {
     if (!state.layout.nodes.has(nodeId)) return;
     state.selectedNodeId = nodeId;
     state.filterMode = null;
+    pendingFocusNodeId = nodeId;
     renderCurrentGraph(false);
     openInspector(nodeId);
   }
 
   function focusNode(nodeId: string): void {
-    if (!state.layout.nodes.has(nodeId)) return;
-    state.selectedNodeId = nodeId;
-    state.filterMode = null;
-    pendingFocusBounds = selectedNeighborhoodBounds(nodeId);
-    renderCurrentGraph(false);
-    openInspector(nodeId);
+    selectNode(nodeId);
   }
 
   function clearSelection(): void {
@@ -197,13 +203,69 @@ async function loadGraph(): Promise<void> {
       openProjectInspector();
     }
   }
+}
 
-  function selectedNeighborhoodBounds(nodeId: string): ViewBounds | null {
-    const neighborhood = new Set<string>([nodeId]);
-    state.upstream.get(nodeId)?.forEach((parentId) => neighborhood.add(parentId));
-    state.downstream.get(nodeId)?.forEach((childId) => neighborhood.add(childId));
-    return getNodeClusterBounds(state.layout, neighborhood);
+function nextKeyboardNodeId(direction: string, state: LayoutState): string | null {
+  const currentNodeId = state.selectedNodeId;
+  if (!currentNodeId) return null;
+
+  if (direction === "right") {
+    return sortedRelatedNodes(state.downstream.get(currentNodeId), state.layout)[0]?.id ?? null;
   }
+
+  const primaryParentId = selectPrimaryParent(currentNodeId, state);
+  if (!primaryParentId) return null;
+
+  if (direction === "left") {
+    return primaryParentId;
+  }
+
+  const siblings = sortedRelatedNodes(state.downstream.get(primaryParentId), state.layout);
+  const currentIndex = siblings.findIndex((node) => node.id === currentNodeId);
+  if (currentIndex < 0) return null;
+  if (direction === "up") {
+    return siblings[currentIndex - 1]?.id ?? null;
+  }
+  if (direction === "down") {
+    return siblings[currentIndex + 1]?.id ?? null;
+  }
+  return null;
+}
+
+function selectPrimaryParent(nodeId: string, state: LayoutState): string | null {
+  const currentNode = state.layout.nodes.get(nodeId);
+  if (!currentNode) return null;
+  return (
+    sortedRelatedNodes(state.upstream.get(nodeId), state.layout).sort(
+      (left, right) =>
+        horizontalDistance(currentNode, left) - horizontalDistance(currentNode, right) ||
+        verticalDistance(currentNode, left) - verticalDistance(currentNode, right)
+    )[0]?.id ?? null
+  );
+}
+
+function sortedRelatedNodes(
+  nodeIds: Set<string> | undefined,
+  layout: LayoutState["layout"]
+): PositionedNode[] {
+  return [...(nodeIds ?? new Set<string>())]
+    .map((nodeId) => layout.nodes.get(nodeId))
+    .filter((node): node is PositionedNode => node !== undefined)
+    .sort((left, right) => left.y - right.y || left.x - right.x);
+}
+
+function horizontalDistance(currentNode: PositionedNode, candidateNode: PositionedNode): number {
+  return Math.abs(candidateNode.x - currentNode.x);
+}
+
+function verticalDistance(currentNode: PositionedNode, candidateNode: PositionedNode): number {
+  return Math.abs(candidateNode.y - currentNode.y);
+}
+
+function isEditableTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false;
+  if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement) return true;
+  return target.isContentEditable;
 }
 
 function buildAdjacency(payload: GraphPayload): {

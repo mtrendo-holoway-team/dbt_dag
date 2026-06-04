@@ -1,3 +1,5 @@
+import hotkeys from "hotkeys-js";
+
 type SearchResult = {
   id: string;
   label: string;
@@ -12,46 +14,48 @@ let results: SearchResult[] = [];
 let activeIndex = 0;
 let requestVersion = 0;
 
-document.addEventListener(
-  "keydown",
-  (event) => {
-    if (!overlay || !input || !popup) return;
+hotkeys("/", (event) => {
+  if (!overlay || !input || !popup) return;
+  if (!shouldOpenSearch(event)) return;
+  event.preventDefault();
+  event.stopPropagation();
+  openSearch();
+});
 
-    if (event.key === "/" && shouldOpenSearch(event)) {
-      event.preventDefault();
-      event.stopPropagation();
-      openSearch();
-      return;
+if (input) {
+  hotkeys(
+    "esc,up,down,enter",
+    {
+      element: input,
+      keydown: true,
+      keyup: false,
+      capture: true
+    },
+    (event, handler) => {
+      if (!isSearchOpen()) return;
+      if (handler.key === "esc") {
+        event.preventDefault();
+        event.stopPropagation();
+        closeSearch();
+        return;
+      }
+      if (handler.key === "down") {
+        event.preventDefault();
+        moveActiveIndex(1);
+        return;
+      }
+      if (handler.key === "up") {
+        event.preventDefault();
+        moveActiveIndex(-1);
+        return;
+      }
+      if (handler.key === "enter") {
+        event.preventDefault();
+        selectActiveResult();
+      }
     }
-
-    if (!isSearchOpen()) return;
-
-    if (event.key === "Escape") {
-      event.preventDefault();
-      event.stopPropagation();
-      closeSearch();
-      return;
-    }
-
-    if (event.key === "ArrowDown") {
-      event.preventDefault();
-      moveActiveIndex(1);
-      return;
-    }
-
-    if (event.key === "ArrowUp") {
-      event.preventDefault();
-      moveActiveIndex(-1);
-      return;
-    }
-
-    if (event.key === "Enter") {
-      event.preventDefault();
-      selectActiveResult();
-    }
-  },
-  true
-);
+  );
+}
 
 overlay?.addEventListener("click", (event) => {
   if (event.target !== overlay) return;

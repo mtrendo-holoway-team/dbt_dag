@@ -24,6 +24,7 @@ const dimmedEdgeMarkerId = "dag-arrowhead-dimmed";
 const dimmedEdgeColor = "#eee";
 const minScale = 0.005;
 const maxScale = 2.5;
+const focusAnimationDurationMs = 260;
 
 const transforms = new WeakMap<HTMLElement, ViewTransform>();
 
@@ -36,23 +37,27 @@ export function renderGraph(
   onSelectNode: (nodeId: string) => void,
   fit: boolean,
   anchor: ViewAnchor | null = null,
-  focusBounds: ViewBounds | null = null
+  focusNodeId: string | null = null
 ): void {
   prepareContainer(container);
   const viewport = viewportSize(container);
   const fallbackTransform = fitTransform(layout, viewport);
-  const transform = focusBounds
-    ? fitTransform(focusBounds, viewport)
-    : fit || !transforms.has(container)
-      ? fallbackTransform
-      : transforms.get(container) ?? fallbackTransform;
-  if (!focusBounds) {
-    applyAnchor(transform, layout, anchor);
-  }
+  const previousTransform = transforms.get(container);
+  const transform =
+    fit || !previousTransform ? { ...fallbackTransform } : { ...previousTransform };
+  applyAnchor(transform, layout, anchor);
+  const targetTransform = focusNodeId
+    ? centerTransformOnNode(layout.nodes.get(focusNodeId) ?? null, viewport, transform.scale)
+    : transform;
   if (!isFiniteTransform(transform)) {
     transform.scale = fallbackTransform.scale;
     transform.x = fallbackTransform.x;
     transform.y = fallbackTransform.y;
+  }
+  if (!isFiniteTransform(targetTransform)) {
+    targetTransform.scale = transform.scale;
+    targetTransform.x = transform.x;
+    targetTransform.y = transform.y;
   }
   transforms.set(container, transform);
 
@@ -71,7 +76,7 @@ export function renderGraph(
   svgElement.append(renderDefs(), content);
   content.append(renderEdges(layout, relatedNodes, filterMode));
   content.append(renderNodes(layout, relatedNodes, selectedNodeId, onSelectNode));
-  applyTransform(content, transform);
+  applyAnimatedTransform(content, transform, targetTransform, focusNodeId !== null);
   bindViewportEvents(svgElement, content, transform);
 }
 
@@ -169,6 +174,21 @@ export function getNodeClusterBounds(
   return { minX, minY, maxX, maxY };
 }
 
+function centerTransformOnNode(
+  node: PositionedNode | null,
+  viewport: { width: number; height: number },
+  scale: number
+): ViewTransform {
+  if (!node) {
+    return { scale, x: 0, y: 0 };
+  }
+  return {
+    scale,
+    x: viewport.width / 2 - (node.x + node.width / 2) * scale,
+    y: viewport.height / 2 - (node.y + node.height / 2) * scale
+  };
+}
+
 function applyAnchor(
   transform: ViewTransform,
   layout: GraphLayout,
@@ -229,6 +249,52 @@ function bindViewportEvents(
 
 function applyTransform(content: SVGElement, transform: ViewTransform): void {
   content.setAttribute("transform", `translate(${transform.x} ${transform.y}) scale(${transform.scale})`);
+}
+
+function applyAnimatedTransform(
+  content: SVGElement,
+  initialTransform: ViewTransform,
+  targetTransform: ViewTransform,
+  shouldAnimate: boolean
+): void {
+  if (!shouldAnimate || transformsMatch(initialTransform, targetTransform)) {
+    applyTransform(content, targetTransform);
+    assignTransform(initialTransform, targetTransform);
+    return;
+  }
+
+  const startTime = performance.now();
+  const startTransform = { ...initialTransform };
+  const animate = (timestamp: number): void => {
+    const progress = clamp((timestamp - startTime) / focusAnimationDurationMs, 0, 1);
+    const eased = 1 - (1 - progress) ** 3;
+    initialTransform.scale = interpolate(startTransform.scale, targetTransform.scale, eased);
+    initialTransform.x = interpolate(startTransform.x, targetTransform.x, eased);
+    initialTransform.y = interpolate(startTransform.y, targetTransform.y, eased);
+    applyTransform(content, initialTransform);
+    if (progress < 1) {
+      window.requestAnimationFrame(animate);
+      return;
+    }
+    assignTransform(initialTransform, targetTransform);
+  };
+
+  applyTransform(content, initialTransform);
+  window.requestAnimationFrame(animate);
+}
+
+function transformsMatch(left: ViewTransform, right: ViewTransform): boolean {
+  return left.scale === right.scale && left.x === right.x && left.y === right.y;
+}
+
+function assignTransform(target: ViewTransform, source: ViewTransform): void {
+  target.scale = source.scale;
+  target.x = source.x;
+  target.y = source.y;
+}
+
+function interpolate(start: number, end: number, progress: number): number {
+  return start + (end - start) * progress;
 }
 
 function isFiniteTransform(transform: ViewTransform): boolean {
@@ -376,8 +442,9 @@ function renderNode(
     height: String(node.height),
     rx: "12",
     fill: nodeFill(node, isSelected, dimNode),
-    stroke: nodeBorderColor(node, dimNode),
-    "stroke-width": String(Math.max(node.runtime.border_width_px, isSelected ? 2 : 1))
+    stroke: nodeBorderColor(node, isSelected, dimNode),
+    "stroke-width": String(nodeBorderWidth(node, isSelected)),
+    "stroke-dasharray": isSelected ? "6 4" : "none"
   });
   const label = svg("foreignObject", {
     x: "12",
@@ -448,9 +515,14 @@ function nodeFill(node: PositionedNode, isSelected: boolean, dimNode: boolean): 
   return dimNode ? lightenColor(fillColor, 0.72) : fillColor;
 }
 
-function nodeBorderColor(node: PositionedNode, dimNode: boolean): string {
+function nodeBorderColor(node: PositionedNode, isSelected: boolean, dimNode: boolean): string {
+  if (isSelected) return "#a1a1aa";
   const borderColor = node.runtime.border_color;
   return dimNode ? lightenColor(borderColor, 0.72) : borderColor;
+}
+
+function nodeBorderWidth(node: PositionedNode, isSelected: boolean): number {
+  return Math.max(node.runtime.border_width_px, isSelected ? 2 : 1);
 }
 
 function nodeTextColor(dimNode: boolean): string {
