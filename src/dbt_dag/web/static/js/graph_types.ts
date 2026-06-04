@@ -23,6 +23,15 @@ export type GraphEdge = {
   target: string;
 };
 
+export type GraphEdgePoint = {
+  x: number;
+  y: number;
+};
+
+export type RoutedGraphEdge = GraphEdge & {
+  points: GraphEdgePoint[];
+};
+
 export type GraphPayload = {
   columns: string[];
   nodes: GraphNode[];
@@ -55,7 +64,7 @@ export type LaneBounds = {
 
 export type GraphLayout = {
   nodes: Map<string, PositionedNode>;
-  edges: GraphEdge[];
+  edges: RoutedGraphEdge[];
   lanes: LaneBounds[];
   width: number;
   height: number;

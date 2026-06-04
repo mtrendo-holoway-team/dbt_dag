@@ -233,9 +233,8 @@ function relatedNodeIds(
   if (mode === "upstream") return walkGraph(selectedNodeId, upstream);
   if (mode === "downstream") return walkGraph(selectedNodeId, downstream);
   return new Set([
-    selectedNodeId,
-    ...(upstream.get(selectedNodeId) ?? []),
-    ...(downstream.get(selectedNodeId) ?? [])
+    ...walkGraph(selectedNodeId, upstream),
+    ...walkGraph(selectedNodeId, downstream)
   ]);
 }
 

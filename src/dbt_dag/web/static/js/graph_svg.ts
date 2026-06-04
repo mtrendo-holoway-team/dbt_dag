@@ -1,4 +1,4 @@
-import type { GraphLayout, LaneBounds, PositionedNode, ViewAnchor } from "./graph_types";
+import type { GraphEdgePoint, GraphLayout, PositionedNode, ViewAnchor } from "./graph_types";
 
 type ViewTransform = {
   scale: number;
@@ -15,16 +15,15 @@ const laneColors: Record<string, string> = {
   other: "#e4e4e7"
 };
 
-const edgeColor = "#52525b";
+const edgeColor = "#777";
 const relatedEdgeColor = "#0ea5e9";
-const dimmedEdgeColor = "#d4d4d8";
 const selectedNodeColor = "#e0f2fe";
-const relatedNodeColor = "#ffffff";
-const dimmedNodeColor = "#f4f4f5";
 const edgeMarkerId = "dag-arrowhead";
+const relatedEdgeMarkerId = "dag-arrowhead-related";
+const dimmedEdgeMarkerId = "dag-arrowhead-dimmed";
+const dimmedEdgeColor = "#eee";
 const minScale = 0.005;
 const maxScale = 2.5;
-const toolbarSafeTop = 104;
 
 const transforms = new WeakMap<HTMLElement, ViewTransform>();
 
@@ -56,17 +55,12 @@ export function renderGraph(
     "aria-label": "dbt DAG"
   }) as SVGSVGElement;
   const content = svg("g", { class: "dag-content" });
-  const overlay = document.createElement("div");
-  overlay.className = "dag-lane-title-overlay";
-  overlay.style.cssText = "position:absolute;inset:0;pointer-events:none;overflow:hidden";
-
-  container.replaceChildren(svgElement, overlay);
+  container.replaceChildren(svgElement);
   svgElement.append(renderDefs(), content);
-  content.append(renderLanes(layout), renderEdges(layout, relatedNodes, filterMode));
+  content.append(renderEdges(layout, relatedNodes, filterMode));
   content.append(renderNodes(layout, relatedNodes, selectedNodeId, onSelectNode));
   applyTransform(content, transform);
-  renderStickyTitles(overlay, layout.lanes, transform, viewport);
-  bindViewportEvents(svgElement, content, overlay, layout, viewport, transform);
+  bindViewportEvents(svgElement, content, transform);
 }
 
 export function getCenterAnchor(
@@ -137,9 +131,6 @@ function applyAnchor(
 function bindViewportEvents(
   svgElement: SVGSVGElement,
   content: SVGElement,
-  overlay: HTMLElement,
-  layout: GraphLayout,
-  viewport: { width: number; height: number },
   transform: ViewTransform
 ): void {
   let dragging = false;
@@ -156,7 +147,6 @@ function bindViewportEvents(
       transform.y = event.offsetY - (event.offsetY - transform.y) * factor;
       transform.scale = nextScale;
       applyTransform(content, transform);
-      renderStickyTitles(overlay, layout.lanes, transform, viewport);
     },
     { passive: false }
   );
@@ -174,7 +164,6 @@ function bindViewportEvents(
     transform.x = transformStart.x + event.clientX - dragStart.x;
     transform.y = transformStart.y + event.clientY - dragStart.y;
     applyTransform(content, transform);
-    renderStickyTitles(overlay, layout.lanes, transform, viewport);
   });
   svgElement.addEventListener("pointerup", (event) => {
     dragging = false;
@@ -187,124 +176,28 @@ function applyTransform(content: SVGElement, transform: ViewTransform): void {
   content.setAttribute("transform", `translate(${transform.x} ${transform.y}) scale(${transform.scale})`);
 }
 
-function renderStickyTitles(
-  overlay: HTMLElement,
-  lanes: LaneBounds[],
-  transform: ViewTransform,
-  viewport: { width: number; height: number }
-): void {
-  const lane = currentLane(lanes, transform, viewport);
-  if (!lane) {
-    overlay.replaceChildren();
-    return;
-  }
-  const title = document.createElement("div");
-  const left = clamp(
-    lane.x * transform.scale + transform.x + 14,
-    12,
-    Math.max(12, (lane.x + lane.width) * transform.scale + transform.x - 120)
-  );
-  const top = clamp(
-    lane.y * transform.scale + transform.y + 24,
-    toolbarSafeTop,
-    Math.max(toolbarSafeTop, (lane.y + lane.height) * transform.scale + transform.y - 28)
-  );
-  title.textContent = lane.label;
-  title.style.cssText = [
-    "position:absolute",
-    `left:${left}px`,
-    `top:${top}px`,
-    "font:20px system-ui,sans-serif",
-    "color:#111827",
-    "white-space:nowrap",
-    "text-shadow:0 1px 0 rgba(255,255,255,.55)"
-  ].join(";");
-  overlay.replaceChildren(title);
-}
-
-function currentLane(
-  lanes: LaneBounds[],
-  transform: ViewTransform,
-  viewport: { width: number; height: number }
-): LaneBounds | null {
-  const visibleLanes = lanes.filter((lane) => laneIsVisible(lane, transform, viewport));
-  if (visibleLanes.length === 0) return null;
-  const graphCenter = {
-    x: (viewport.width / 2 - transform.x) / transform.scale,
-    y: (viewport.height / 2 - transform.y) / transform.scale
-  };
-  const containingLane = visibleLanes.find(
-    (lane) =>
-      graphCenter.x >= lane.x &&
-      graphCenter.x <= lane.x + lane.width &&
-      graphCenter.y >= lane.y &&
-      graphCenter.y <= lane.y + lane.height
-  );
-  if (containingLane) return containingLane;
-  return visibleLanes.sort((left, right) => {
-    const leftDistance = laneDistanceToPoint(left, graphCenter);
-    const rightDistance = laneDistanceToPoint(right, graphCenter);
-    return leftDistance - rightDistance;
-  })[0];
-}
-
-function laneDistanceToPoint(lane: LaneBounds, point: { x: number; y: number }): number {
-  return Math.hypot(lane.x + lane.width / 2 - point.x, lane.y + lane.height / 2 - point.y);
-}
-
-function laneIsVisible(
-  lane: LaneBounds,
-  transform: ViewTransform,
-  viewport: { width: number; height: number }
-): boolean {
-  const left = lane.x * transform.scale + transform.x;
-  const right = (lane.x + lane.width) * transform.scale + transform.x;
-  const top = lane.y * transform.scale + transform.y;
-  const bottom = (lane.y + lane.height) * transform.scale + transform.y;
-  return right > 0 && left < viewport.width && bottom > 0 && top < viewport.height;
-}
-
 function renderDefs(): SVGElement {
   const defs = svg("defs");
-  const marker = svg("marker", {
-    id: edgeMarkerId,
-    markerWidth: "10",
-    markerHeight: "10",
-    refX: "8",
-    refY: "5",
-    orient: "auto",
-    markerUnits: "strokeWidth"
-  });
-  marker.append(svg("path", { d: "M 0 0 L 10 5 L 0 10 z", fill: edgeColor }));
-  defs.append(marker);
+  defs.append(
+    edgeMarkerDef(edgeMarkerId, edgeColor),
+    edgeMarkerDef(relatedEdgeMarkerId, relatedEdgeColor),
+    edgeMarkerDef(dimmedEdgeMarkerId, dimmedEdgeColor)
+  );
   return defs;
 }
 
-function renderLanes(layout: GraphLayout): SVGElement {
-  const group = svg("g", { class: "dag-lanes" });
-  layout.lanes.forEach((lane) => {
-    group.append(
-      svg("rect", {
-        x: String(lane.x),
-        y: String(lane.y),
-        width: String(lane.width),
-        height: String(lane.height),
-        fill: laneColors[lane.column] ?? laneColors.other
-      }),
-      laneTitle(lane)
-    );
+function edgeMarkerDef(id: string, color: string): SVGElement {
+  const marker = svg("marker", {
+    id,
+    markerWidth: "5",
+    markerHeight: "5",
+    refX: "4",
+    refY: "2.5",
+    orient: "auto",
+    markerUnits: "strokeWidth"
   });
-  return group;
-}
-
-function laneTitle(lane: LaneBounds): SVGTextElement {
-  const title = svg("text", {
-    x: String(lane.x + 14),
-    y: String(lane.y + 34),
-    style: "font:20px system-ui,sans-serif;fill:#111827"
-  }) as SVGTextElement;
-  title.textContent = lane.label;
-  return title;
+  marker.append(svg("path", { d: "M 0 0 L 5 2.5 L 0 5 z", fill: color }));
+  return marker;
 }
 
 function renderEdges(
@@ -314,12 +207,9 @@ function renderEdges(
 ): SVGElement {
   const group = svg("g", { class: "dag-edges" });
   layout.edges.forEach((edge) => {
-    const source = layout.nodes.get(edge.source);
-    const target = layout.nodes.get(edge.target);
-    if (!source || !target) return;
     const isRelated =
       relatedNodes === null || (relatedNodes.has(edge.source) && relatedNodes.has(edge.target));
-    group.append(renderEdge(source, target, isRelated, Boolean(filterMode)));
+    group.append(renderEdge(edge.points, isRelated, Boolean(filterMode)));
   });
   return group;
 }
@@ -331,58 +221,99 @@ function renderNodes(
   onSelectNode: (nodeId: string) => void
 ): SVGElement {
   const group = svg("g", { class: "dag-nodes" });
+  const hasSelection = selectedNodeId !== null;
   layout.nodes.forEach((node) => {
     const isSelected = selectedNodeId === node.id;
     const isRelated = relatedNodes?.has(node.id) ?? true;
-    group.append(renderNode(node, isSelected, isRelated, onSelectNode));
+    group.append(renderNode(node, isSelected, isRelated, hasSelection, onSelectNode));
   });
   return group;
 }
 
 function renderEdge(
-  source: PositionedNode,
-  target: PositionedNode,
+  points: GraphEdgePoint[],
   isRelated: boolean,
   hasMode: boolean
 ): SVGPathElement {
-  const sourcePoint = { x: source.x + source.width, y: source.y + source.height / 2 };
-  const targetPoint = { x: target.x, y: target.y + target.height / 2 };
-  const distance = Math.max(80, Math.abs(targetPoint.x - sourcePoint.x) / 2);
+  const strokeColor = edgeStrokeColor(isRelated, hasMode);
+  const strokeWidth = isRelated && hasMode ? "1.67" : "1";
   return svg("path", {
-    d: [
-      `M ${sourcePoint.x} ${sourcePoint.y}`,
-      `C ${sourcePoint.x + distance} ${sourcePoint.y}`,
-      `${targetPoint.x - distance} ${targetPoint.y}`,
-      `${targetPoint.x} ${targetPoint.y}`
-    ].join(" "),
+    d: roundedPolylinePath(points),
     class: "dag-edge",
-    stroke: isRelated ? (hasMode ? relatedEdgeColor : edgeColor) : dimmedEdgeColor,
-    "stroke-width": isRelated && hasMode ? "2.5" : "1.5",
+    stroke: strokeColor,
+    "stroke-width": strokeWidth,
     fill: "none",
-    "marker-end": `url(#${edgeMarkerId})`
+    "marker-end": `url(#${edgeMarker(isRelated, hasMode)})`
   }) as SVGPathElement;
+}
+
+function roundedPolylinePath(points: GraphEdgePoint[]): string {
+  if (points.length === 0) return "";
+  if (points.length === 1) return `M ${points[0].x} ${points[0].y}`;
+  const radius = 12;
+  const segments = [`M ${points[0].x} ${points[0].y}`];
+
+  for (let index = 1; index < points.length - 1; index += 1) {
+    const previous = points[index - 1];
+    const current = points[index];
+    const next = points[index + 1];
+    const previousDistance = distanceBetween(previous, current);
+    const nextDistance = distanceBetween(current, next);
+    const cornerRadius = Math.min(radius, previousDistance / 2, nextDistance / 2);
+
+    if (cornerRadius < 1) {
+      segments.push(`L ${current.x} ${current.y}`);
+      continue;
+    }
+
+    const entry = moveToward(current, previous, cornerRadius);
+    const exit = moveToward(current, next, cornerRadius);
+    segments.push(`L ${entry.x} ${entry.y}`);
+    segments.push(`Q ${current.x} ${current.y} ${exit.x} ${exit.y}`);
+  }
+
+  const last = points[points.length - 1];
+  segments.push(`L ${last.x} ${last.y}`);
+  return segments.join(" ");
+}
+
+function distanceBetween(first: GraphEdgePoint, second: GraphEdgePoint): number {
+  return Math.hypot(second.x - first.x, second.y - first.y);
+}
+
+function moveToward(from: GraphEdgePoint, to: GraphEdgePoint, distance: number): GraphEdgePoint {
+  const fullDistance = distanceBetween(from, to);
+  if (fullDistance === 0) return from;
+  const ratio = distance / fullDistance;
+  return {
+    x: from.x + (to.x - from.x) * ratio,
+    y: from.y + (to.y - from.y) * ratio
+  };
 }
 
 function renderNode(
   node: PositionedNode,
   isSelected: boolean,
   isRelated: boolean,
+  hasSelection: boolean,
   onSelectNode: (nodeId: string) => void
 ): SVGElement {
+  const dimNode = hasSelection && !isRelated;
+  const shadow = nodeShadow(isSelected, isRelated, hasSelection);
   const group = svg("g", {
     class: "dag-node",
     transform: `translate(${node.x} ${node.y})`,
     "data-node-id": node.id,
     tabindex: "0",
     role: "button",
-    style: "cursor:pointer;outline:none"
+    style: `cursor:pointer;outline:none;filter:${shadow}`
   });
   const rect = svg("rect", {
     width: String(node.width),
     height: String(node.height),
     rx: "12",
-    fill: nodeFill(isSelected, isRelated),
-    stroke: isSelected ? relatedEdgeColor : node.runtime.border_color,
+    fill: nodeFill(node, isSelected, dimNode),
+    stroke: nodeBorderColor(node, dimNode),
     "stroke-width": String(Math.max(node.runtime.border_width_px, isSelected ? 2 : 1))
   });
   const label = svg("foreignObject", {
@@ -401,7 +332,7 @@ function renderNode(
       "white-space:nowrap",
       "font:13px system-ui,sans-serif",
       "line-height:26px",
-      "color:#18181b"
+      `color:${nodeTextColor(dimNode)}`
     ].join(";")
   );
   text.textContent = node.label;
@@ -417,10 +348,61 @@ function renderNode(
   return group;
 }
 
-function nodeFill(isSelected: boolean, isRelated: boolean): string {
+function nodeFill(node: PositionedNode, isSelected: boolean, dimNode: boolean): string {
   if (isSelected) return selectedNodeColor;
-  if (isRelated) return relatedNodeColor;
-  return dimmedNodeColor;
+  const fillColor = laneColors[normalizeNodeColumn(node.column)] ?? laneColors.other;
+  return dimNode ? lightenColor(fillColor, 0.72) : fillColor;
+}
+
+function nodeBorderColor(node: PositionedNode, dimNode: boolean): string {
+  const borderColor = node.runtime.border_color;
+  return dimNode ? lightenColor(borderColor, 0.72) : borderColor;
+}
+
+function nodeTextColor(dimNode: boolean): string {
+  return dimNode ? lightenColor("#18181b", 0.72) : "#18181b";
+}
+
+function nodeShadow(isSelected: boolean, isRelated: boolean, hasSelection: boolean): string {
+  if (!hasSelection || !isRelated) return "none";
+  if (isSelected) return "drop-shadow(0 4px 10px rgba(15, 23, 42, 0.18))";
+  return "drop-shadow(0 2px 5px rgba(15, 23, 42, 0.1))";
+}
+
+function edgeStrokeColor(isRelated: boolean, hasMode: boolean): string {
+  if (isRelated) return hasMode ? relatedEdgeColor : edgeColor;
+  return dimmedEdgeColor;
+}
+
+function edgeMarker(isRelated: boolean, hasMode: boolean): string {
+  if (isRelated) return hasMode ? relatedEdgeMarkerId : edgeMarkerId;
+  return dimmedEdgeMarkerId;
+}
+
+function normalizeNodeColumn(column: string): string {
+  return column in laneColors ? column : "other";
+}
+
+function lightenColor(color: string, amount: number): string {
+  const match = /^#([0-9a-f]{6})$/i.exec(color);
+  if (!match) return color;
+  const hex = match[1];
+  const red = parseInt(hex.slice(0, 2), 16);
+  const green = parseInt(hex.slice(2, 4), 16);
+  const blue = parseInt(hex.slice(4, 6), 16);
+  return rgbToHex(
+    mixChannel(red, amount),
+    mixChannel(green, amount),
+    mixChannel(blue, amount)
+  );
+}
+
+function mixChannel(channel: number, amount: number): number {
+  return Math.round(channel + (255 - channel) * amount);
+}
+
+function rgbToHex(red: number, green: number, blue: number): string {
+  return `#${[red, green, blue].map((channel) => channel.toString(16).padStart(2, "0")).join("")}`;
 }
 
 function clamp(value: number, min: number, max: number): number {
