@@ -244,6 +244,10 @@ def _graph_payload(graph: Any) -> dict[str, Any]:
             {"id": edge.edge_id, "source": edge.source, "target": edge.target}
             for edge in graph.edges
         ],
+        "groups": [
+            {"id": group.group_id, "label": group.label, "node_ids": group.node_ids}
+            for group in graph.groups
+        ],
         "project": {
             "models_count": graph.project.models_count,
             "sources_count": graph.project.sources_count,

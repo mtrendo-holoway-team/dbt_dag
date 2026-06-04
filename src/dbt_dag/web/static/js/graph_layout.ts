@@ -3,9 +3,11 @@ import ELK, { type ElkNode } from "elkjs/lib/elk.bundled.js";
 import type {
   GraphEdge,
   GraphEdgePoint,
+  GraphGroup,
   GraphLayout,
   GraphNode,
   GraphPayload,
+  PositionedGroup,
   PositionedNode,
   RoutedGraphEdge
 } from "./graph_types";
@@ -16,6 +18,9 @@ export const nodeWidth = 210;
 export const nodeHeight = 42;
 
 const minGraphHeight = 260;
+const groupPaddingX = 20;
+const groupPaddingTop = 36;
+const groupPaddingBottom = 20;
 
 export async function layoutGraph(
   payload: GraphPayload,
@@ -27,11 +32,13 @@ export async function layoutGraph(
   const elkLayout = await layoutOrder(visiblePayload, nodesById);
   const positionedNodes = positionNodes(visiblePayload.nodes, effectiveColumns, elkLayout.nodePositions);
   const routedEdges = positionEdges(elkLayout.edges, elkLayout.nodePositions, positionedNodes);
-  const graphBounds = graphBoundsForLayout(positionedNodes, routedEdges);
+  const positionedGroups = positionGroups(visiblePayload.groups, positionedNodes);
+  const graphBounds = graphBoundsForLayout(positionedNodes, routedEdges, positionedGroups);
 
   return {
     nodes: positionedNodes,
     edges: routedEdges,
+    groups: positionedGroups,
     width: graphBounds.width,
     height: graphBounds.height
   };
@@ -47,7 +54,14 @@ function filterPayload(payload: GraphPayload, activePackages: Set<string>): Grap
   return {
     columns: payload.columns,
     nodes,
-    edges: payload.edges.filter((edge) => nodeIds.has(edge.source) && nodeIds.has(edge.target))
+    edges: payload.edges.filter((edge) => nodeIds.has(edge.source) && nodeIds.has(edge.target)),
+    groups: payload.groups
+      .map((group) => ({
+        ...group,
+        node_ids: group.node_ids.filter((nodeId) => nodeIds.has(nodeId))
+      }))
+      .filter((group) => group.node_ids.length > 0),
+    project: payload.project
   };
 }
 
@@ -138,24 +152,37 @@ function positionEdges(
 
 function graphBoundsForLayout(
   nodes: Map<string, PositionedNode>,
-  edges: RoutedGraphEdge[]
+  edges: RoutedGraphEdge[],
+  groups: PositionedGroup[]
 ): { width: number; height: number } {
   if (nodes.size === 0) return { width: graphPaddingX * 2, height: minGraphHeight };
   let maxX = 0;
   let maxY = 0;
+  let minX = graphPaddingX;
+  let minY = graphPaddingY;
   nodes.forEach((node) => {
+    minX = Math.min(minX, node.x);
+    minY = Math.min(minY, node.y);
     maxX = Math.max(maxX, node.x + node.width);
     maxY = Math.max(maxY, node.y + node.height);
   });
   edges.forEach((edge) => {
     edge.points.forEach((point) => {
+      minX = Math.min(minX, point.x);
+      minY = Math.min(minY, point.y);
       maxX = Math.max(maxX, point.x);
       maxY = Math.max(maxY, point.y);
     });
   });
+  groups.forEach((group) => {
+    minX = Math.min(minX, group.x);
+    minY = Math.min(minY, group.y);
+    maxX = Math.max(maxX, group.x + group.width);
+    maxY = Math.max(maxY, group.y + group.height);
+  });
   return {
-    width: maxX + graphPaddingX,
-    height: Math.max(minGraphHeight, maxY + graphPaddingY)
+    width: maxX + Math.max(graphPaddingX, -Math.min(0, minX)),
+    height: Math.max(minGraphHeight, maxY + Math.max(graphPaddingY, -Math.min(0, minY)))
   };
 }
 
@@ -238,4 +265,84 @@ function effectiveColumnByNode(payload: GraphPayload): Map<string, string> {
       return [node.id, mainColumns[index] ?? "other"];
     })
   );
+}
+
+function positionGroups(
+  groups: GraphGroup[],
+  positionedNodes: Map<string, PositionedNode>
+): PositionedGroup[] {
+  return groups.flatMap((group) => {
+    const nodes = group.node_ids
+      .map((nodeId) => positionedNodes.get(nodeId))
+      .filter((node): node is PositionedNode => node !== undefined);
+    if (nodes.length === 0) return [];
+    const clusters = mergeGroupNodeRects(nodes);
+    return clusters.map((cluster, index) => ({
+      ...group,
+      id: `${group.id}:${index}`,
+      label: index === 0 ? group.label : "",
+      x: cluster.x,
+      y: cluster.y,
+      width: cluster.width,
+      height: cluster.height
+    }));
+  });
+}
+
+function mergeGroupNodeRects(nodes: PositionedNode[]): Array<{
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}> {
+  const pending = nodes.map((node) => ({
+    x: node.x - groupPaddingX,
+    y: node.y - groupPaddingTop,
+    width: node.width + groupPaddingX * 2,
+    height: node.height + groupPaddingTop + groupPaddingBottom
+  }));
+  const merged: typeof pending = [];
+
+  pending.forEach((rect) => {
+    let nextRect = rect;
+    let mergedIndex = merged.findIndex((existing) => rectsTouch(existing, nextRect));
+    while (mergedIndex >= 0) {
+      nextRect = unionRect(merged[mergedIndex], nextRect);
+      merged.splice(mergedIndex, 1);
+      mergedIndex = merged.findIndex((existing) => rectsTouch(existing, nextRect));
+    }
+    merged.push(nextRect);
+  });
+
+  return merged.sort((left, right) => left.y - right.y || left.x - right.x);
+}
+
+function rectsTouch(
+  left: { x: number; y: number; width: number; height: number },
+  right: { x: number; y: number; width: number; height: number }
+): boolean {
+  const mergeGapX = 24;
+  const mergeGapY = 28;
+  return (
+    left.x <= right.x + right.width + mergeGapX &&
+    left.x + left.width + mergeGapX >= right.x &&
+    left.y <= right.y + right.height + mergeGapY &&
+    left.y + left.height + mergeGapY >= right.y
+  );
+}
+
+function unionRect(
+  left: { x: number; y: number; width: number; height: number },
+  right: { x: number; y: number; width: number; height: number }
+): { x: number; y: number; width: number; height: number } {
+  const minX = Math.min(left.x, right.x);
+  const minY = Math.min(left.y, right.y);
+  const maxX = Math.max(left.x + left.width, right.x + right.width);
+  const maxY = Math.max(left.y + left.height, right.y + right.height);
+  return {
+    x: minX,
+    y: minY,
+    width: maxX - minX,
+    height: maxY - minY
+  };
 }

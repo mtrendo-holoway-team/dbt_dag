@@ -24,6 +24,18 @@ export type GraphEdge = {
   target: string;
 };
 
+export type GraphGroup = {
+  id: string;
+  label: string;
+  node_ids: string[];
+};
+
+export type ProjectSummary = {
+  models_count: number;
+  sources_count: number;
+  tests_count: number;
+};
+
 export type GraphEdgePoint = {
   x: number;
   y: number;
@@ -37,6 +49,8 @@ export type GraphPayload = {
   columns: string[];
   nodes: GraphNode[];
   edges: GraphEdge[];
+  groups: GraphGroup[];
+  project: ProjectSummary;
 };
 
 export type MetadataRevision = {
@@ -57,6 +71,14 @@ export type FilterMode = "upstream" | "downstream" | "reset";
 export type GraphLayout = {
   nodes: Map<string, PositionedNode>;
   edges: RoutedGraphEdge[];
+  groups: PositionedGroup[];
+  width: number;
+  height: number;
+};
+
+export type PositionedGroup = GraphGroup & {
+  x: number;
+  y: number;
   width: number;
   height: number;
 };

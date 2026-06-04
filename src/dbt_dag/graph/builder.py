@@ -1,5 +1,6 @@
 from dbt_dag.graph.models import GRAPH_COLUMNS
 from dbt_dag.graph.models import GraphEdge
+from dbt_dag.graph.models import GraphGroup
 from dbt_dag.graph.models import GraphNode
 from dbt_dag.graph.models import GraphNodeRuntime
 from dbt_dag.graph.models import GraphPayload
@@ -45,6 +46,7 @@ def build_graph(
     runtime_metadata: dict[str, NodeRuntimeMetadata] | None = None,
 ) -> GraphPayload:
     graph_nodes = manifest.graph_nodes()
+    groups = _build_groups(graph_nodes)
     nodes = [
         GraphNode(
             node_id=node.unique_id,
@@ -77,6 +79,7 @@ def build_graph(
         columns=GRAPH_COLUMNS,
         nodes=nodes,
         edges=edges,
+        groups=groups,
         project=ProjectSummary(
             models_count=sum(
                 1 for node in manifest.nodes.values() if node.resource_type == "model"
@@ -118,3 +121,61 @@ def _graph_runtime(metadata: NodeRuntimeMetadata | None) -> GraphNodeRuntime:
         border_width_px=metadata.border_width_px,
         border_color=metadata.border_color,
     )
+
+
+def _build_groups(graph_nodes: dict[str, DbtManifestNode]) -> list[GraphGroup]:
+    source_groups = _build_source_groups(graph_nodes)
+    product_group = _build_product_group(graph_nodes)
+    return [*source_groups, *product_group]
+
+
+def _build_source_groups(graph_nodes: dict[str, DbtManifestNode]) -> list[GraphGroup]:
+    grouped_sources: dict[tuple[str, str], list[str]] = {}
+    for node in graph_nodes.values():
+        if node.resource_type != "source":
+            continue
+        source_name = _source_name(node)
+        if not source_name:
+            continue
+        label = _source_group_label(node, source_name)
+        grouped_sources.setdefault((source_name, label), []).append(node.unique_id)
+    return [
+        GraphGroup(
+            group_id=f"source:{source_name}",
+            label=label,
+            node_ids=sorted(node_ids),
+        )
+        for (source_name, label), node_ids in sorted(grouped_sources.items())
+    ]
+
+
+def _build_product_group(graph_nodes: dict[str, DbtManifestNode]) -> list[GraphGroup]:
+    product_node_ids = sorted(
+        node.unique_id
+        for node in graph_nodes.values()
+        if node.resource_type == "model" and "product" in _node_tags(node)
+    )
+    if not product_node_ids:
+        return []
+    return [GraphGroup(group_id="tag:product", label="Продукт", node_ids=product_node_ids)]
+
+
+def _source_name(node: DbtManifestNode) -> str:
+    source_name = node.raw.get("source_name")
+    return source_name.strip() if isinstance(source_name, str) else ""
+
+
+def _source_group_label(node: DbtManifestNode, fallback: str) -> str:
+    source_description = node.raw.get("source_description")
+    if isinstance(source_description, str) and source_description.strip():
+        return source_description.strip()
+    return fallback
+
+
+def _node_tags(node: DbtManifestNode) -> set[str]:
+    raw_tags = node.raw.get("tags")
+    if isinstance(raw_tags, str):
+        return {raw_tags}
+    if isinstance(raw_tags, list):
+        return {tag for tag in raw_tags if isinstance(tag, str)}
+    return set()

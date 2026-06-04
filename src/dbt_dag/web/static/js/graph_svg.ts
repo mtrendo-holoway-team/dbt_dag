@@ -1,4 +1,11 @@
-import type { GraphEdgePoint, GraphLayout, PositionedNode, ViewAnchor, ViewBounds } from "./graph_types";
+import type {
+  GraphEdgePoint,
+  GraphLayout,
+  PositionedGroup,
+  PositionedNode,
+  ViewAnchor,
+  ViewBounds
+} from "./graph_types";
 
 type ViewTransform = {
   scale: number;
@@ -74,6 +81,7 @@ export function renderGraph(
   const content = svg("g", { class: "dag-content" });
   container.replaceChildren(svgElement);
   svgElement.append(renderDefs(), content);
+  content.append(renderGroups(layout.groups));
   content.append(renderEdges(layout, relatedNodes, filterMode));
   content.append(renderNodes(layout, relatedNodes, selectedNodeId, onSelectNode));
   applyAnimatedTransform(content, transform, targetTransform, focusNodeId !== null);
@@ -343,6 +351,14 @@ function renderEdges(
   return group;
 }
 
+function renderGroups(groups: PositionedGroup[]): SVGElement {
+  const group = svg("g", { class: "dag-groups" });
+  groups.forEach((panel) => {
+    group.append(renderGroupPanel(panel));
+  });
+  return group;
+}
+
 function renderNodes(
   layout: GraphLayout,
   relatedNodes: Set<string> | null,
@@ -506,6 +522,32 @@ function renderNode(
       onSelectNode(node.id);
     }
   });
+  return group;
+}
+
+function renderGroupPanel(groupPanel: PositionedGroup): SVGElement {
+  const group = svg("g", {
+    class: "dag-group",
+    transform: `translate(${groupPanel.x} ${groupPanel.y})`
+  });
+  const rect = svg("rect", {
+    width: String(groupPanel.width),
+    height: String(groupPanel.height),
+    rx: "20",
+    fill: "#e7e5e4",
+    stroke: "#d6d3d1",
+    "stroke-width": "1"
+  });
+  const label = svg("text", {
+    x: "16",
+    y: "22",
+    fill: "#44403c",
+    "font-size": "13",
+    "font-weight": "600",
+    "font-family": "system-ui,sans-serif"
+  });
+  label.textContent = groupPanel.label;
+  group.append(rect, label);
   return group;
 }
 

@@ -39,6 +39,13 @@ class GraphEdge:
 
 
 @dataclass(frozen=True)
+class GraphGroup:
+    group_id: str
+    label: str
+    node_ids: list[str]
+
+
+@dataclass(frozen=True)
 class ProjectSummary:
     models_count: int
     sources_count: int
@@ -50,4 +57,5 @@ class GraphPayload:
     columns: list[str]
     nodes: list[GraphNode]
     edges: list[GraphEdge]
+    groups: list[GraphGroup]
     project: ProjectSummary

@@ -30,6 +30,10 @@ def test_graph_builder_emits_stable_nodes_and_edges(dbt_project: Path) -> None:
         "source.demo.raw.orders->model.demo.stg_orders",
         "model.demo.stg_orders->model.demo.fct_orders",
     }
+    assert {group.group_id: (group.label, group.node_ids) for group in graph.groups} == {
+        "source:raw": ("Raw data", ["source.demo.raw.orders"]),
+        "tag:product": ("Продукт", ["model.demo.fct_orders"]),
+    }
 
 
 def test_node_classifier_maps_required_columns(dbt_project: Path) -> None:
