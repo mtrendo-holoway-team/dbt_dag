@@ -1,9 +1,10 @@
+from dataclasses import dataclass
+from statistics import median
 from typing import Any
 
 from dbt_dag.inspectors.dto import NodeInspectorContextDTO
 from dbt_dag.inspectors.utils import block_id
 from dbt_dag.inspectors.utils import group_months_by_year
-from dbt_dag.inspectors.utils import partition_fill_class
 from dbt_dag.inspectors.utils import partition_status_class
 from dbt_dag.inspectors.utils import partition_status_label
 from dbt_dag.partitions.models import ModelPartitionCalendarDTO
@@ -11,6 +12,18 @@ from dbt_dag.partitions.models import PartitionDayCellDTO
 from dbt_dag.partitions.models import PartitionMonthDTO
 
 TEMPLATE_NAME = "inspectors/blocks/partition.html"
+_REFERENCE_WINDOW = 7
+_COLOR_THRESHOLDS = (
+    (0.25, "partition-day-critical"),
+    (0.8, "partition-day-low"),
+    (1.2, "partition-day-normal"),
+)
+
+
+@dataclass(frozen=True)
+class _DayReference:
+    day: PartitionDayCellDTO
+    reference_median: float | None
 
 
 def build_template_context(inspector: NodeInspectorContextDTO) -> dict[str, Any]:
@@ -49,24 +62,32 @@ def _format_last_synced(calendar: ModelPartitionCalendarDTO) -> str:
 
 
 def _build_month_groups(months: list[PartitionMonthDTO]) -> list[dict[str, Any]]:
+    reference_median_by_date = _reference_median_by_date(months)
     return [
         {
             "year": months_in_year[0].year,
-            "months": [_build_month(month) for month in months_in_year],
+            "months": [_build_month(month, reference_median_by_date) for month in months_in_year],
         }
         for months_in_year in group_months_by_year(months)
     ]
 
 
-def _build_month(month: PartitionMonthDTO) -> dict[str, Any]:
+def _build_month(
+    month: PartitionMonthDTO,
+    reference_median_by_date: dict[str, float | None],
+) -> dict[str, Any]:
     return {
         "month_label": month.month_label,
         "leading_empty_days": range(month.leading_empty_days),
-        "days": [_build_day(day) for day in month.days],
+        "days": [
+            _build_day(day)
+            for day in _annotate_reference_medians(month.days, reference_median_by_date)
+        ],
     }
 
 
-def _build_day(day: PartitionDayCellDTO) -> dict[str, str]:
+def _build_day(day_reference: _DayReference) -> dict[str, str]:
+    day = day_reference.day
     title = (
         f"{day.date.isoformat()} - {day.row_count} rows"
         if day.row_count is not None
@@ -74,5 +95,67 @@ def _build_day(day: PartitionDayCellDTO) -> dict[str, str]:
     )
     return {
         "title": title,
-        "fill_class": partition_fill_class(day.fill_level),
+        "color_class": _partition_day_color_class(day.row_count, day_reference.reference_median),
     }
+
+
+def _annotate_reference_medians(
+    month_days: list[PartitionDayCellDTO],
+    reference_median_by_date: dict[str, float | None],
+) -> list[_DayReference]:
+    return [
+        _DayReference(
+            day=day,
+            reference_median=reference_median_by_date.get(day.date.isoformat()),
+        )
+        for day in month_days
+    ]
+
+
+def _reference_median_by_date(months: list[PartitionMonthDTO]) -> dict[str, float | None]:
+    chronological_days = [day for month in reversed(months) for day in month.days]
+    medians: dict[str, float | None] = {}
+    for index, day in enumerate(chronological_days):
+        medians[day.date.isoformat()] = _reference_median(chronological_days, index)
+    return medians
+
+
+def _reference_median(days: list[PartitionDayCellDTO], current_index: int) -> float | None:
+    current_day = days[current_index]
+    if current_day.row_count is None:
+        return None
+    previous_values = [day.row_count for day in days[:current_index] if day.row_count is not None][
+        -_REFERENCE_WINDOW:
+    ]
+    if len(previous_values) < _REFERENCE_WINDOW:
+        next_values = [
+            day.row_count for day in days[current_index + 1 :] if day.row_count is not None
+        ]
+        previous_values.extend(next_values[: _REFERENCE_WINDOW - len(previous_values)])
+    if not previous_values:
+        return None
+    return float(median(previous_values))
+
+
+def _partition_day_color_class(row_count: int | None, reference_median: float | None) -> str:
+    if row_count is None:
+        return "partition-day-no-data"
+    ratio = _partition_day_ratio(row_count, reference_median)
+    if ratio is None:
+        return "partition-day-normal"
+    return _partition_day_color_by_ratio(ratio)
+
+
+def _partition_day_ratio(row_count: int, reference_median: float | None) -> float | None:
+    if reference_median is None:
+        return None
+    if reference_median <= 0:
+        return None if row_count <= 0 else float("inf")
+    return row_count / reference_median
+
+
+def _partition_day_color_by_ratio(ratio: float) -> str:
+    for threshold, color_class in _COLOR_THRESHOLDS:
+        if ratio < threshold:
+            return color_class
+    return "partition-day-high"

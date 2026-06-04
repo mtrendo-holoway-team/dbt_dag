@@ -1,6 +1,5 @@
 from dbt_dag.metadata.models import RuntimeDataSource
 from dbt_dag.partitions.models import ModelPartitionCalendarDTO
-from dbt_dag.partitions.models import PartitionFillLevel
 from dbt_dag.partitions.models import PartitionMonthDTO
 from dbt_dag.partitions.models import PartitionSyncStatus
 
@@ -33,14 +32,6 @@ def partition_status_class(calendar: ModelPartitionCalendarDTO) -> str:
     if calendar.sync_status == PartitionSyncStatus.RUNNING:
         return "text-cyan-400"
     return "text-emerald-400"
-
-
-def partition_fill_class(fill_level: PartitionFillLevel) -> str:
-    if fill_level == PartitionFillLevel.FULL:
-        return "partition-day-full"
-    if fill_level == PartitionFillLevel.HALF:
-        return "partition-day-half"
-    return "partition-day-empty"
 
 
 def group_months_by_year(months: list[PartitionMonthDTO]) -> list[list[PartitionMonthDTO]]:

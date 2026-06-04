@@ -25,19 +25,27 @@
   }
 
   .partition-day {
-		@apply size-2.5 rounded-full border border-green-500;
+		@apply size-2.5 rounded-full border;
   }
 
-  .partition-day-empty {
-		@apply bg-stone-500 border-stone-500;
+  .partition-day-no-data {
+		@apply border-red-600 bg-transparent;
   }
 
-  .partition-day-half {
-    background: linear-gradient(-90deg, #16a34a 50%, transparent 50%);
+  .partition-day-critical {
+		@apply border-red-600 bg-red-600;
   }
 
-  .partition-day-full {
-		@apply bg-green-500;
+  .partition-day-low {
+		@apply border-amber-600 bg-amber-600;
+  }
+
+  .partition-day-normal {
+		@apply border-green-600 bg-green-600;
+  }
+
+  .partition-day-high {
+		@apply border-lime-400 bg-lime-400;
   }
 
   @media (min-width: 768px) {
