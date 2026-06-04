@@ -2,6 +2,7 @@ from pathlib import Path
 
 from dbt_dag.graph.builder import build_graph
 from dbt_dag.graph.builder import classify_node
+from dbt_dag.graph.builder import node_type_badge
 from dbt_dag.manifest.parser import load_manifest
 
 
@@ -20,6 +21,11 @@ def test_graph_builder_emits_stable_nodes_and_edges(dbt_project: Path) -> None:
         "model.demo.fct_orders",
     }
     assert {node.package_name for node in graph.nodes} == {"demo"}
+    assert {node.node_id: node.type_badge for node in graph.nodes} == {
+        "source.demo.raw.orders": "S",
+        "model.demo.stg_orders": "V",
+        "model.demo.fct_orders": "T",
+    }
     assert {edge.edge_id for edge in graph.edges} == {
         "source.demo.raw.orders->model.demo.stg_orders",
         "model.demo.stg_orders->model.demo.fct_orders",
@@ -34,3 +40,6 @@ def test_node_classifier_maps_required_columns(dbt_project: Path) -> None:
     assert classify_node(nodes["source.demo.raw.orders"]) == "sources"
     assert classify_node(nodes["model.demo.stg_orders"]) == "stg"
     assert classify_node(nodes["model.demo.fct_orders"]) == "marts"
+    assert node_type_badge(nodes["source.demo.raw.orders"]) == "S"
+    assert node_type_badge(nodes["model.demo.stg_orders"]) == "V"
+    assert node_type_badge(nodes["model.demo.fct_orders"]) == "T"

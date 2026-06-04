@@ -1,4 +1,4 @@
-import type { GraphEdgePoint, GraphLayout, PositionedNode, ViewAnchor } from "./graph_types";
+import type { GraphEdgePoint, GraphLayout, PositionedNode, ViewAnchor, ViewBounds } from "./graph_types";
 
 type ViewTransform = {
   scale: number;
@@ -35,19 +35,31 @@ export function renderGraph(
   filterMode: string | null,
   onSelectNode: (nodeId: string) => void,
   fit: boolean,
-  anchor: ViewAnchor | null = null
+  anchor: ViewAnchor | null = null,
+  focusBounds: ViewBounds | null = null
 ): void {
   prepareContainer(container);
   const viewport = viewportSize(container);
-  const transform = fit || !transforms.has(container)
-    ? fitTransform(layout, viewport)
-    : transforms.get(container) ?? fitTransform(layout, viewport);
-  applyAnchor(transform, layout, anchor);
+  const fallbackTransform = fitTransform(layout, viewport);
+  const transform = focusBounds
+    ? fitTransform(focusBounds, viewport)
+    : fit || !transforms.has(container)
+      ? fallbackTransform
+      : transforms.get(container) ?? fallbackTransform;
+  if (!focusBounds) {
+    applyAnchor(transform, layout, anchor);
+  }
+  if (!isFiniteTransform(transform)) {
+    transform.scale = fallbackTransform.scale;
+    transform.x = fallbackTransform.x;
+    transform.y = fallbackTransform.y;
+  }
   transforms.set(container, transform);
 
   const svgElement = svg("svg", {
     class: "dag-canvas",
-    style: "display:block;width:100%;height:100%;background:#fafafa;cursor:grab",
+    style:
+      "display:block;width:100%;height:100%;background:#fafafa;cursor:grab;user-select:none;-webkit-user-select:none",
     viewBox: `0 0 ${viewport.width} ${viewport.height}`,
     width: String(viewport.width),
     height: String(viewport.height),
@@ -102,18 +114,59 @@ function viewportSize(container: HTMLElement): { width: number; height: number }
 }
 
 function fitTransform(
-  layout: GraphLayout,
+  bounds: GraphLayout | ViewBounds,
   viewport: { width: number; height: number }
 ): ViewTransform {
+  const normalizedBounds = graphBounds(bounds);
+  const minX = normalizedBounds.minX;
+  const minY = normalizedBounds.minY;
+  const maxX = normalizedBounds.maxX;
+  const maxY = normalizedBounds.maxY;
+  const width = Math.max(maxX - minX, 1);
+  const height = Math.max(maxY - minY, 1);
   const scale = Math.min(
     1,
-    Math.max(minScale, Math.min(viewport.width / layout.width, viewport.height / layout.height))
+    Math.max(minScale, Math.min(viewport.width / width, viewport.height / height))
   );
   return {
     scale,
-    x: (viewport.width - layout.width * scale) / 2,
-    y: (viewport.height - layout.height * scale) / 2
+    x: (viewport.width - width * scale) / 2 - minX * scale,
+    y: (viewport.height - height * scale) / 2 - minY * scale
   };
+}
+
+function graphBounds(bounds: GraphLayout | ViewBounds): ViewBounds {
+  if ("width" in bounds && "height" in bounds) {
+    return {
+      minX: 0,
+      minY: 0,
+      maxX: Number.isFinite(bounds.width) ? bounds.width : 1,
+      maxY: Number.isFinite(bounds.height) ? bounds.height : 1
+    };
+  }
+  return {
+    minX: Number.isFinite(bounds.minX) ? bounds.minX : 0,
+    minY: Number.isFinite(bounds.minY) ? bounds.minY : 0,
+    maxX: Number.isFinite(bounds.maxX) ? bounds.maxX : 1,
+    maxY: Number.isFinite(bounds.maxY) ? bounds.maxY : 1
+  };
+}
+
+export function getNodeClusterBounds(
+  layout: GraphLayout,
+  nodeIds: Set<string>,
+  padding = 120
+): ViewBounds | null {
+  const nodes = [...nodeIds]
+    .map((nodeId) => layout.nodes.get(nodeId))
+    .filter((node): node is PositionedNode => node !== undefined);
+  if (nodes.length === 0) return null;
+
+  const minX = Math.min(...nodes.map((node) => node.x)) - padding;
+  const minY = Math.min(...nodes.map((node) => node.y)) - padding;
+  const maxX = Math.max(...nodes.map((node) => node.x + node.width)) + padding;
+  const maxY = Math.max(...nodes.map((node) => node.y + node.height)) + padding;
+  return { minX, minY, maxX, maxY };
 }
 
 function applyAnchor(
@@ -124,6 +177,7 @@ function applyAnchor(
   if (!anchor) return;
   const node = layout.nodes.get(anchor.nodeId);
   if (!node) return;
+  if (!Number.isFinite(anchor.screenX) || !Number.isFinite(anchor.screenY)) return;
   transform.x = anchor.screenX - (node.x + node.width / 2) * transform.scale;
   transform.y = anchor.screenY - (node.y + node.height / 2) * transform.scale;
 }
@@ -153,6 +207,7 @@ function bindViewportEvents(
 
   svgElement.addEventListener("pointerdown", (event) => {
     if ((event.target as Element).closest(".dag-node")) return;
+    event.preventDefault();
     dragging = true;
     dragStart = { x: event.clientX, y: event.clientY };
     transformStart = { ...transform };
@@ -174,6 +229,14 @@ function bindViewportEvents(
 
 function applyTransform(content: SVGElement, transform: ViewTransform): void {
   content.setAttribute("transform", `translate(${transform.x} ${transform.y}) scale(${transform.scale})`);
+}
+
+function isFiniteTransform(transform: ViewTransform): boolean {
+  return (
+    Number.isFinite(transform.scale) &&
+    Number.isFinite(transform.x) &&
+    Number.isFinite(transform.y)
+  );
 }
 
 function renderDefs(): SVGElement {
@@ -306,7 +369,7 @@ function renderNode(
     "data-node-id": node.id,
     tabindex: "0",
     role: "button",
-    style: `cursor:pointer;outline:none;filter:${shadow}`
+    style: `cursor:pointer;outline:none;filter:${shadow};user-select:none;-webkit-user-select:none`
   });
   const rect = svg("rect", {
     width: String(node.width),
@@ -327,15 +390,46 @@ function renderNode(
     "style",
     [
       "height:100%",
-      "overflow:hidden",
-      "text-overflow:ellipsis",
-      "white-space:nowrap",
+      "display:flex",
+      "align-items:center",
+      "gap:8px",
+      "user-select:none",
       "font:13px system-ui,sans-serif",
       "line-height:26px",
       `color:${nodeTextColor(dimNode)}`
     ].join(";")
   );
-  text.textContent = node.label;
+  const badge = document.createElementNS("http://www.w3.org/1999/xhtml", "span");
+  badge.setAttribute(
+    "style",
+    [
+      "display:inline-flex",
+      "align-items:center",
+      "justify-content:center",
+      "width:16px",
+      "height:16px",
+      "flex:0 0 16px",
+      "border-radius:4px",
+      "background:#44403c",
+      "color:#fafaf9",
+      "font-size:10px",
+      "font-weight:600",
+      "line-height:1"
+    ].join(";")
+  );
+  badge.textContent = node.type_badge;
+  const labelText = document.createElementNS("http://www.w3.org/1999/xhtml", "span");
+  labelText.setAttribute(
+    "style",
+    [
+      "min-width:0",
+      "overflow:hidden",
+      "text-overflow:ellipsis",
+      "white-space:nowrap"
+    ].join(";")
+  );
+  labelText.textContent = node.label;
+  text.append(badge, labelText);
   label.append(text);
   group.append(rect, label);
   group.addEventListener("click", () => onSelectNode(node.id));

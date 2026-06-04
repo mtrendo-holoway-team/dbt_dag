@@ -10,9 +10,7 @@ from litestar.response import Response
 from litestar.response import Template
 
 from dbt_dag.inspectors import actions as actions_inspector
-from dbt_dag.inspectors import description as description_inspector
 from dbt_dag.inspectors import last_update as last_update_inspector
-from dbt_dag.inspectors import model_info as model_info_inspector
 from dbt_dag.inspectors import NodeInspectorContextFactory
 from dbt_dag.inspectors import partition as partition_inspector
 from dbt_dag.inspectors import tasks as tasks_inspector
@@ -71,39 +69,11 @@ class PagesController(Controller):
             context={
                 "node": node,
                 "selection_token": selection_token,
-                "model_info_block_id": block_id("model-info", selection_token),
-                "description_block_id": block_id("description", selection_token),
                 "last_update_block_id": block_id("last-update", selection_token),
                 "partition_block_id": block_id("partition", selection_token),
                 "actions_block_id": block_id("actions", selection_token),
                 "tasks_block_id": block_id("tasks", selection_token),
             },
-        )
-
-    @get("/inspector/node/{node_id:str}/model-info")
-    async def node_model_info_inspector(
-        self,
-        request: Request[Any, Any, Any],
-        node_id: str,
-        selection_token: str = "initial",
-    ) -> Template:
-        inspector = _context_factory.build(_state(request), node_id, selection_token)
-        return Template(
-            template_name=model_info_inspector.TEMPLATE_NAME,
-            context=model_info_inspector.build_template_context(inspector),
-        )
-
-    @get("/inspector/node/{node_id:str}/description")
-    async def node_description_inspector(
-        self,
-        request: Request[Any, Any, Any],
-        node_id: str,
-        selection_token: str = "initial",
-    ) -> Template:
-        inspector = _context_factory.build(_state(request), node_id, selection_token)
-        return Template(
-            template_name=description_inspector.TEMPLATE_NAME,
-            context=description_inspector.build_template_context(inspector),
         )
 
     @get("/inspector/node/{node_id:str}/last-update")
@@ -248,6 +218,7 @@ def _graph_payload(graph: Any) -> dict[str, Any]:
             {
                 "id": node.node_id,
                 "label": node.label,
+                "type_badge": node.type_badge,
                 "column": node.column,
                 "resource_type": node.resource_type,
                 "package_name": node.package_name,

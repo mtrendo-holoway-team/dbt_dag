@@ -39,6 +39,11 @@ def test_graph_endpoint_returns_documented_shape(dbt_project: Path, tmp_path: Pa
     assert body["project"]["tests_count"] == 1
     assert len(body["nodes"]) == 3
     assert {node["package_name"] for node in body["nodes"]} == {"demo"}
+    assert {node["id"]: node["type_badge"] for node in body["nodes"]} == {
+        "source.demo.raw.orders": "S",
+        "model.demo.stg_orders": "V",
+        "model.demo.fct_orders": "T",
+    }
     assert body["nodes"][0]["runtime"]["border_width_px"] == 1
 
 
@@ -52,31 +57,21 @@ def test_node_inspector_returns_shell_with_tokenized_blocks(
 
     assert response.status_code == 200
     assert "stg_orders" in response.text
-    assert 'id="inspector-block-model-info-token123"' in response.text
+    assert "Staged orders" in response.text
+    assert 'id="inspector-block-last-update-token123"' in response.text
     assert (
-        "/inspector/node/model.demo.stg_orders/model-info?selection_token=token123" in response.text
+        "/inspector/node/model.demo.stg_orders/last-update?selection_token=token123"
+        in response.text
     )
 
 
-def test_model_info_block_returns_name_and_full_id(dbt_project: Path, tmp_path: Path) -> None:
+def test_project_inspector_returns_when_no_selection(dbt_project: Path, tmp_path: Path) -> None:
     client = _client(dbt_project, tmp_path)
 
-    response = client.get("/inspector/node/model.demo.stg_orders/model-info?selection_token=abc")
+    response = client.get("/inspector/project")
 
     assert response.status_code == 200
-    assert "Model info" in response.text
-    assert "stg_orders" in response.text
-    assert "model.demo.stg_orders" in response.text
-
-
-def test_description_block_returns_description(dbt_project: Path, tmp_path: Path) -> None:
-    client = _client(dbt_project, tmp_path)
-
-    response = client.get("/inspector/node/model.demo.stg_orders/description?selection_token=abc")
-
-    assert response.status_code == 200
-    assert "Description" in response.text
-    assert "Staged orders" in response.text
+    assert "Project" in response.text
 
 
 def test_last_update_block_returns_runtime_panel(dbt_project: Path, tmp_path: Path) -> None:
@@ -147,7 +142,7 @@ def test_tasks_block_polls_with_selection_token(dbt_project: Path, tmp_path: Pat
     assert "/inspector/node/model.demo.stg_orders/tasks?selection_token=token123" in response.text
 
 
-def test_description_block_does_not_load_partition_or_tasks(
+def test_node_shell_header_does_not_load_partition_or_tasks(
     dbt_project: Path,
     tmp_path: Path,
 ) -> None:
@@ -167,7 +162,7 @@ def test_description_block_does_not_load_partition_or_tasks(
         task_repository=task_repository,
     )
 
-    response = client.get("/inspector/node/model.demo.stg_orders/description?selection_token=abc")
+    response = client.get("/inspector/node/model.demo.stg_orders?selection_token=abc")
 
     assert response.status_code == 200
     assert "Staged orders" in response.text

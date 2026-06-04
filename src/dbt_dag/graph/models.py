@@ -22,6 +22,7 @@ class GraphNodeRuntime:
 class GraphNode:
     node_id: str
     label: str
+    type_badge: str
     column: str
     resource_type: str
     package_name: str

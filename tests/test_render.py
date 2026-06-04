@@ -71,8 +71,6 @@ def test_shell_template_renders_tokenized_block_ids() -> None:
                 raw={},
             ),
             selection_token="token123",
-            model_info_block_id="inspector-block-model-info-token123",
-            description_block_id="inspector-block-description-token123",
             last_update_block_id="inspector-block-last-update-token123",
             partition_block_id="inspector-block-partition-token123",
             actions_block_id="inspector-block-actions-token123",
@@ -80,8 +78,9 @@ def test_shell_template_renders_tokenized_block_ids() -> None:
         )
     )
 
-    assert 'id="inspector-block-model-info-token123"' in html
-    assert "/inspector/node/model.demo.stg_orders/model-info?selection_token=token123" in html
+    assert "Staged orders" in html
+    assert 'id="inspector-block-last-update-token123"' in html
+    assert "/inspector/node/model.demo.stg_orders/last-update?selection_token=token123" in html
     assert 'id="inspector-block-tasks-token123"' in html
     assert "/inspector/node/model.demo.stg_orders/tasks?selection_token=token123" in html
 

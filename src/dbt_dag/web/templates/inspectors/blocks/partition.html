@@ -1,9 +1,9 @@
 <section
   id="{{ block_id }}"
   class="space-y-4 rounded-lg border border-zinc-800 bg-zinc-950/40 p-4"
+  data-inspector-refresh="metadata"
   {% if inspector.supports_partitions %}
   hx-get="/inspector/node/{{ inspector.node.unique_id | urlencode }}/partition?selection_token={{ inspector.selection_token }}"
-  hx-trigger="every 3s"
   hx-swap="outerHTML"
   {% endif %}
 >

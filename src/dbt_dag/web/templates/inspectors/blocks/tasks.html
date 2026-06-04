@@ -1,8 +1,8 @@
 <section
   id="{{ block_id }}"
   class="space-y-3 rounded-lg border border-zinc-800 bg-zinc-950/40 p-4"
+  data-inspector-refresh="metadata"
   hx-get="/inspector/node/{{ inspector.node.unique_id | urlencode }}/tasks?selection_token={{ inspector.selection_token }}"
-  hx-trigger="every 3s"
   hx-swap="outerHTML"
 >
   <h2 class="text-sm font-medium">Tasks</h2>

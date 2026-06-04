@@ -26,13 +26,30 @@ def render_page() -> str:
   <main class="grid h-screen grid-cols-[1fr_360px]">
     <section class="relative min-w-0 border-r border-zinc-800">
       <div class="absolute left-4 right-4 top-4 z-10 flex flex-wrap items-center gap-2">
-        <input id="graph-search" class="w-80 rounded border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm outline-none focus:border-cyan-500" placeholder="/ search">
         <button class="btn" data-filter="upstream">Upstream</button>
         <button class="btn" data-filter="downstream">Downstream</button>
         <button class="btn" data-filter="reset">Reset</button>
         <div id="package-filters" class="flex min-w-0 flex-wrap items-center gap-2 text-xs text-zinc-300"></div>
       </div>
-      <div id="search-popup" class="absolute left-4 top-28 z-20 hidden w-80 rounded border border-zinc-700 bg-zinc-900 shadow-xl"></div>
+      <div
+        id="graph-search-overlay"
+        class="pointer-events-none absolute inset-0 z-20 hidden items-start justify-center bg-zinc-950/20 px-4 pt-16"
+      >
+        <section
+          class="pointer-events-auto w-full max-w-2xl overflow-hidden rounded-2xl border border-zinc-700 bg-zinc-900/95 shadow-2xl backdrop-blur"
+        >
+          <div class="border-b border-zinc-800 px-4 py-3">
+            <input
+              id="graph-search-input"
+              class="w-full bg-transparent text-sm text-zinc-100 outline-none placeholder:text-zinc-500"
+              placeholder="Search models, sources, exposures"
+              autocomplete="off"
+              spellcheck="false"
+            >
+          </div>
+          <div id="graph-search-popup" class="max-h-96 overflow-y-auto p-2"></div>
+        </section>
+      </div>
       <div id="graph-root" class="h-full w-full overflow-hidden"></div>
     </section>
     <aside id="inspector" class="overflow-auto bg-zinc-900 p-5" hx-get="/inspector/project" hx-trigger="load">

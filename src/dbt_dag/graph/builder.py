@@ -49,6 +49,7 @@ def build_graph(
         GraphNode(
             node_id=node.unique_id,
             label=node.name,
+            type_badge=node_type_badge(node),
             column=classify_node(node),
             resource_type=node.resource_type,
             package_name=node.package_name,
@@ -84,6 +85,25 @@ def build_graph(
             tests_count=manifest.test_count(),
         ),
     )
+
+
+def node_type_badge(node: DbtManifestNode) -> str:
+    if node.resource_type == "source":
+        return "S"
+    if node.resource_type == "exposure":
+        return "X"
+    if node.resource_type != "model":
+        return (node.resource_type[:1] or "?").upper()
+
+    materialized = str(node.raw.get("config", {}).get("materialized", "")).lower()
+    badge_by_materialization = {
+        "table": "T",
+        "view": "V",
+        "ephemeral": "E",
+        "materialized_view": "M",
+        "incremental": "I",
+    }
+    return badge_by_materialization.get(materialized, "M")
 
 
 def _graph_runtime(metadata: NodeRuntimeMetadata | None) -> GraphNodeRuntime:

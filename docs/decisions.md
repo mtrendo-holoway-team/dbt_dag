@@ -129,3 +129,11 @@
 - Context: The inspector sidebar had grown into a single server-rendered HTML string, and switching nodes could stall the sidebar while one response assembled every section.
 - Decision: Render a fast inspector shell first, then load inspector sections as separate tokenized HTMX blocks backed by a shared server-side inspector DTO and Jinja templates.
 - Consequences: Inspector presentation is modularized under `src/dbt_dag/inspectors`, stale block responses are isolated by selection token, and long-running or polling sections such as partitions and tasks can refresh independently without blocking node selection.
+
+## ADR-0017 Metadata-Driven Inspector Refresh
+
+- Created: 2026-06-04
+- Status: active
+- Context: Polling individual inspector blocks caused visible blinking and refreshed static controls that did not depend on changing metadata.
+- Decision: Keep the inspector shell stable after node selection, reload only metadata-dependent blocks when the shared metadata revision changes, and leave static blocks such as actions out of automatic refresh.
+- Consequences: Inspector updates no longer swap the whole sidebar during background refresh, metadata-driven blocks can show lightweight in-place loading state, and block refresh responsibility stays centralized in the graph client instead of block-level polling.

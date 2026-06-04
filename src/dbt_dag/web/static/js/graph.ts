@@ -1,19 +1,23 @@
 import htmx from "htmx.org";
 
 import { layoutGraph } from "./graph_layout";
-import { getCenterAnchor, renderGraph } from "./graph_svg";
+import { getCenterAnchor, getNodeClusterBounds, renderGraph } from "./graph_svg";
+import { refreshInspectorMetadataBlocks } from "./inspectors";
 import type {
   FilterMode,
   GraphNode,
   GraphPayload,
   LayoutState,
   MetadataRevision,
-  ViewAnchor
+  ViewAnchor,
+  ViewBounds
 } from "./graph_types";
 
 declare global {
   interface Window {
     dbtDagSelectNode?: (nodeId: string) => void;
+    dbtDagFocusNode?: (nodeId: string) => void;
+    dbtDagClearSelection?: () => void;
   }
 }
 
@@ -47,8 +51,15 @@ async function loadGraph(): Promise<void> {
   let layoutVersion = 0;
   let refreshVersion = 0;
   let currentRevision = await loadMetadataRevision();
+  let pendingFocusBounds: ViewBounds | null = null;
+  let lastContainerSize = {
+    width: Math.max(container.clientWidth, 0),
+    height: Math.max(container.clientHeight, 0)
+  };
 
   window.dbtDagSelectNode = selectNode;
+  window.dbtDagFocusNode = focusNode;
+  window.dbtDagClearSelection = clearSelection;
   const packageChangeHandler = async (packageName: string, enabled: boolean) => {
     const nextPackages = new Set(state.activePackages);
     if (enabled) {
@@ -70,6 +81,21 @@ async function loadGraph(): Promise<void> {
   };
   renderPackageFilters(payload.nodes, activePackages, packageChangeHandler);
   renderCurrentGraph(true);
+  const resizeObserver = new ResizeObserver(() => {
+    const nextSize = {
+      width: Math.max(container.clientWidth, 0),
+      height: Math.max(container.clientHeight, 0)
+    };
+    if (
+      nextSize.width === lastContainerSize.width &&
+      nextSize.height === lastContainerSize.height
+    ) {
+      return;
+    }
+    lastContainerSize = nextSize;
+    renderCurrentGraph(!state.selectedNodeId);
+  });
+  resizeObserver.observe(container);
   window.setInterval(() => {
     void refreshIfNeeded();
   }, 5000);
@@ -78,14 +104,18 @@ async function loadGraph(): Promise<void> {
     const mode = (event as FilterEvent).detail.mode;
     if (!mode) return;
     if (mode === "reset") {
-      state.selectedNodeId = null;
-      state.filterMode = null;
-      renderCurrentGraph(false);
+      clearSelection();
       return;
     }
     if (!state.selectedNodeId) return;
     state.filterMode = mode;
     renderCurrentGraph(false);
+  });
+
+  document.addEventListener("keydown", (event) => {
+    if (event.key !== "Escape") return;
+    if (!state.selectedNodeId) return;
+    clearSelection();
   });
 
   function renderCurrentGraph(fit = false, anchor: ViewAnchor | null = null): void {
@@ -94,6 +124,8 @@ async function loadGraph(): Promise<void> {
       ? relatedNodeIds(state.selectedNodeId, state.filterMode, state.upstream, state.downstream)
       : null;
     if (currentVersion !== renderVersion) return;
+    const focusBounds = pendingFocusBounds;
+    pendingFocusBounds = null;
     renderGraph(
       container,
       state.layout,
@@ -102,7 +134,8 @@ async function loadGraph(): Promise<void> {
       state.filterMode,
       selectNode,
       fit,
-      anchor
+      anchor,
+      focusBounds
     );
   }
 
@@ -112,6 +145,22 @@ async function loadGraph(): Promise<void> {
     state.filterMode = null;
     renderCurrentGraph(false);
     openInspector(nodeId);
+  }
+
+  function focusNode(nodeId: string): void {
+    if (!state.layout.nodes.has(nodeId)) return;
+    state.selectedNodeId = nodeId;
+    state.filterMode = null;
+    pendingFocusBounds = selectedNeighborhoodBounds(nodeId);
+    renderCurrentGraph(false);
+    openInspector(nodeId);
+  }
+
+  function clearSelection(): void {
+    state.selectedNodeId = null;
+    state.filterMode = null;
+    renderCurrentGraph(false);
+    openProjectInspector();
   }
 
   async function refreshIfNeeded(): Promise<void> {
@@ -143,8 +192,17 @@ async function loadGraph(): Promise<void> {
     renderPackageFilters(payload.nodes, state.activePackages, packageChangeHandler);
     renderCurrentGraph(false, anchor);
     if (state.selectedNodeId) {
-      openInspector(state.selectedNodeId);
+      refreshInspectorMetadataBlocks();
+    } else {
+      openProjectInspector();
     }
+  }
+
+  function selectedNeighborhoodBounds(nodeId: string): ViewBounds | null {
+    const neighborhood = new Set<string>([nodeId]);
+    state.upstream.get(nodeId)?.forEach((parentId) => neighborhood.add(parentId));
+    state.downstream.get(nodeId)?.forEach((childId) => neighborhood.add(childId));
+    return getNodeClusterBounds(state.layout, neighborhood);
   }
 }
 
@@ -259,6 +317,16 @@ function openInspector(nodeId: string): void {
   const url = `/inspector/node/${encodeURIComponent(nodeId)}?selection_token=${selectionToken}`;
   inspector.setAttribute("hx-get", url);
   htmx.ajax("GET", url, {
+    target: "#inspector",
+    swap: "innerHTML"
+  });
+}
+
+function openProjectInspector(): void {
+  const inspector = document.getElementById("inspector");
+  if (!inspector) return;
+  inspector.setAttribute("hx-get", "/inspector/project");
+  htmx.ajax("GET", "/inspector/project", {
     target: "#inspector",
     swap: "innerHTML"
   });

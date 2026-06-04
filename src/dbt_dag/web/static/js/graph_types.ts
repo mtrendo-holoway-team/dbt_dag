@@ -11,6 +11,7 @@ export type GraphNodeRuntime = {
 export type GraphNode = {
   id: string;
   label: string;
+  type_badge: string;
   column: string;
   resource_type: string;
   package_name: string;
@@ -74,6 +75,13 @@ export type ViewAnchor = {
   nodeId: string;
   screenX: number;
   screenY: number;
+};
+
+export type ViewBounds = {
+  minX: number;
+  minY: number;
+  maxX: number;
+  maxY: number;
 };
 
 export type LayoutState = {
