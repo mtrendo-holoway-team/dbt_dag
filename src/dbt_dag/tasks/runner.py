@@ -1,6 +1,7 @@
 import logging
 import subprocess
 import threading
+from typing import Callable
 
 from dbt_dag.dbt_runtime.types import DbtRuntimeProfile
 from dbt_dag.tasks.models import NodeTaskDTO
@@ -10,9 +11,15 @@ logger = logging.getLogger(__name__)
 
 
 class DbtTaskRunner:
-    def __init__(self, repository: NodeTaskRepository, runtime_profile: DbtRuntimeProfile) -> None:
+    def __init__(
+        self,
+        repository: NodeTaskRepository,
+        runtime_profile: DbtRuntimeProfile,
+        on_finished: Callable[[], None] | None = None,
+    ) -> None:
         self._repository = repository
         self._runtime_profile = runtime_profile
+        self._on_finished = on_finished
 
     def start_build(self, node_id: str) -> NodeTaskDTO:
         command = [
@@ -54,3 +61,5 @@ class DbtTaskRunner:
 
         logs = "\n".join([completed.stdout, completed.stderr]).strip()
         self._repository.mark_finished(task_id, exit_code=completed.returncode, logs_excerpt=logs)
+        if self._on_finished is not None:
+            self._on_finished()

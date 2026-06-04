@@ -1,10 +1,13 @@
 from dbt_dag.graph.models import GRAPH_COLUMNS
 from dbt_dag.graph.models import GraphEdge
 from dbt_dag.graph.models import GraphNode
+from dbt_dag.graph.models import GraphNodeRuntime
 from dbt_dag.graph.models import GraphPayload
 from dbt_dag.graph.models import ProjectSummary
 from dbt_dag.manifest.models import DbtManifest
 from dbt_dag.manifest.models import DbtManifestNode
+from dbt_dag.metadata.models import empty_node_runtime_metadata
+from dbt_dag.metadata.models import NodeRuntimeMetadata
 
 
 def classify_node(node: DbtManifestNode) -> str:
@@ -37,7 +40,10 @@ def _is_mart_node(name: str, searchable: str) -> bool:
     return name.startswith(("mart_", "marts_", "fct_", "dim_")) or "marts" in searchable
 
 
-def build_graph(manifest: DbtManifest) -> GraphPayload:
+def build_graph(
+    manifest: DbtManifest,
+    runtime_metadata: dict[str, NodeRuntimeMetadata] | None = None,
+) -> GraphPayload:
     graph_nodes = manifest.graph_nodes()
     nodes = [
         GraphNode(
@@ -48,6 +54,11 @@ def build_graph(manifest: DbtManifest) -> GraphPayload:
             package_name=node.package_name,
             description=node.description,
             indicators=[],
+            runtime=_graph_runtime(
+                runtime_metadata.get(node.unique_id)
+                if runtime_metadata is not None
+                else empty_node_runtime_metadata()
+            ),
         )
         for node in graph_nodes.values()
     ]
@@ -72,4 +83,18 @@ def build_graph(manifest: DbtManifest) -> GraphPayload:
             sources_count=len(manifest.sources),
             tests_count=manifest.test_count(),
         ),
+    )
+
+
+def _graph_runtime(metadata: NodeRuntimeMetadata | None) -> GraphNodeRuntime:
+    if metadata is None:
+        metadata = empty_node_runtime_metadata()
+    return GraphNodeRuntime(
+        execution_time_seconds=metadata.execution_time_seconds,
+        execution_time_source=metadata.execution_time_source,
+        last_updated_at=metadata.last_updated_at,
+        last_updated_source=metadata.last_updated_source,
+        freshness=metadata.freshness,
+        border_width_px=metadata.border_width_px,
+        border_color=metadata.border_color,
     )

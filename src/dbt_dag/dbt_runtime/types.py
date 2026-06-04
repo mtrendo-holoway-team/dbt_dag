@@ -42,3 +42,7 @@ class ConnectionCheck:
 class QueryResult:
     columns: list[str]
     rows: list[dict[str, Any]]
+
+
+class WarehouseQueryError(RuntimeError):
+    pass

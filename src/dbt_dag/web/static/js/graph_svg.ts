@@ -382,8 +382,8 @@ function renderNode(
     height: String(node.height),
     rx: "12",
     fill: nodeFill(isSelected, isRelated),
-    stroke: isSelected ? relatedEdgeColor : "#a1a1aa",
-    "stroke-width": isSelected ? "2" : "1.5"
+    stroke: isSelected ? relatedEdgeColor : node.runtime.border_color,
+    "stroke-width": String(Math.max(node.runtime.border_width_px, isSelected ? 2 : 1))
   });
   const label = svg("foreignObject", {
     x: "12",

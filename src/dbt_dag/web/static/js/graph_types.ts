@@ -1,9 +1,20 @@
+export type GraphNodeRuntime = {
+  execution_time_seconds: number | null;
+  execution_time_source: string;
+  last_updated_at: string | null;
+  last_updated_source: string;
+  freshness: string;
+  border_width_px: number;
+  border_color: string;
+};
+
 export type GraphNode = {
   id: string;
   label: string;
   column: string;
   resource_type: string;
   package_name: string;
+  runtime: GraphNodeRuntime;
 };
 
 export type GraphEdge = {
@@ -16,6 +27,11 @@ export type GraphPayload = {
   columns: string[];
   nodes: GraphNode[];
   edges: GraphEdge[];
+};
+
+export type MetadataRevision = {
+  revision: number;
+  refreshed_at: string;
 };
 
 export type PositionedNode = GraphNode & {

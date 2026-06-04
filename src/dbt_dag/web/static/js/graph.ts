@@ -2,7 +2,14 @@ import htmx from "htmx.org";
 
 import { layoutGraph } from "./graph_layout";
 import { getCenterAnchor, renderGraph } from "./graph_svg";
-import type { FilterMode, GraphNode, GraphPayload, LayoutState, ViewAnchor } from "./graph_types";
+import type {
+  FilterMode,
+  GraphNode,
+  GraphPayload,
+  LayoutState,
+  MetadataRevision,
+  ViewAnchor
+} from "./graph_types";
 
 declare global {
   interface Window {
@@ -23,7 +30,7 @@ async function loadGraph(): Promise<void> {
   if (!container) return;
 
   const response = await fetch("/api/graph");
-  const payload = (await response.json()) as GraphPayload;
+  let payload = (await response.json()) as GraphPayload;
   const activePackages = new Set(
     graphPackages(payload.nodes).filter((packageName) => !defaultHiddenPackages.has(packageName))
   );
@@ -38,9 +45,11 @@ async function loadGraph(): Promise<void> {
   };
   let renderVersion = 0;
   let layoutVersion = 0;
+  let refreshVersion = 0;
+  let currentRevision = await loadMetadataRevision();
 
   window.dbtDagSelectNode = selectNode;
-  renderPackageFilters(payload.nodes, activePackages, async (packageName, enabled) => {
+  const packageChangeHandler = async (packageName: string, enabled: boolean) => {
     const nextPackages = new Set(state.activePackages);
     if (enabled) {
       nextPackages.add(packageName);
@@ -58,8 +67,12 @@ async function loadGraph(): Promise<void> {
       state.filterMode = null;
     }
     renderCurrentGraph(false, anchor);
-  });
+  };
+  renderPackageFilters(payload.nodes, activePackages, packageChangeHandler);
   renderCurrentGraph(true);
+  window.setInterval(() => {
+    void refreshIfNeeded();
+  }, 5000);
 
   document.addEventListener("dbt-dag-filter", (event) => {
     const mode = (event as FilterEvent).detail.mode;
@@ -100,6 +113,39 @@ async function loadGraph(): Promise<void> {
     renderCurrentGraph(false);
     openInspector(nodeId);
   }
+
+  async function refreshIfNeeded(): Promise<void> {
+    const nextRevision = await loadMetadataRevision();
+    if (nextRevision <= currentRevision) return;
+    currentRevision = nextRevision;
+    await refreshGraph();
+  }
+
+  async function refreshGraph(): Promise<void> {
+    const currentRefresh = (refreshVersion += 1);
+    const nextResponse = await fetch("/api/graph");
+    const nextPayload = (await nextResponse.json()) as GraphPayload;
+    const nextPackages = reconcileActivePackages(payload, nextPayload, state.activePackages);
+    const anchor = getCenterAnchor(container, state.layout, visibleNodeIds(payload.nodes, nextPackages));
+    const nextLayout = await layoutGraph(nextPayload, nextPackages);
+    if (currentRefresh !== refreshVersion) return;
+
+    payload = nextPayload;
+    const adjacency = buildAdjacency(nextPayload);
+    state.upstream = adjacency.upstream;
+    state.downstream = adjacency.downstream;
+    state.activePackages = nextPackages;
+    state.layout = nextLayout;
+    if (state.selectedNodeId && !state.layout.nodes.has(state.selectedNodeId)) {
+      state.selectedNodeId = null;
+      state.filterMode = null;
+    }
+    renderPackageFilters(payload.nodes, state.activePackages, packageChangeHandler);
+    renderCurrentGraph(false, anchor);
+    if (state.selectedNodeId) {
+      openInspector(state.selectedNodeId);
+    }
+  }
 }
 
 function buildAdjacency(payload: GraphPayload): {
@@ -131,6 +177,22 @@ function visibleNodeIds(nodes: GraphNode[], activePackages: Set<string>): Set<st
   return new Set(
     nodes.filter((node) => activePackages.has(node.package_name)).map((node) => node.id)
   );
+}
+
+function reconcileActivePackages(
+  previousPayload: GraphPayload,
+  nextPayload: GraphPayload,
+  activePackages: Set<string>
+): Set<string> {
+  const previousPackages = new Set(graphPackages(previousPayload.nodes));
+  const nextPackages = graphPackages(nextPayload.nodes);
+  const result = new Set([...activePackages].filter((packageName) => nextPackages.includes(packageName)));
+  for (const packageName of nextPackages) {
+    if (!previousPackages.has(packageName) && !defaultHiddenPackages.has(packageName)) {
+      result.add(packageName);
+    }
+  }
+  return result;
 }
 
 function renderPackageFilters(
@@ -201,4 +263,10 @@ function openInspector(nodeId: string): void {
   });
 }
 
-loadGraph();
+async function loadMetadataRevision(): Promise<number> {
+  const response = await fetch("/api/metadata/revision");
+  const payload = (await response.json()) as MetadataRevision;
+  return payload.revision;
+}
+
+void loadGraph();

@@ -105,3 +105,11 @@
 - Context: The DAG view needs stable left-to-right dependency layout, labeled rectangular nodes, and fewer edge crossings than the Sigma force-style renderer provides.
 - Decision: Use ELK.js layered layout to order DAG nodes, then render the result with first-party SVG and HTML.
 - Consequences: Frontend graph rendering depends on `elkjs`; the backend graph payload remains the source of node and edge data, and visual swimlanes are derived in the browser.
+
+## ADR-0014 Runtime Metadata Refresh
+
+- Created: 2026-06-03
+- Status: active
+- Context: Node styling and inspectors need execution duration and table update metadata that may change after the initial page load.
+- Decision: Keep runtime metadata in a centralized thread-safe graph state store, refresh it in a daemon watcher, and prefer warehouse metadata over local dbt artifacts.
+- Consequences: Graph and inspector endpoints read a consistent snapshot; frontend clients poll a lightweight revision endpoint and reload graph data only when the revision changes.

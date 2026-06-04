@@ -10,6 +10,7 @@
 
 ## API
 
-- `GET /api/graph`: Return graph nodes, edges, columns, and project summary.
+- `GET /api/graph`: Return graph nodes, runtime metadata, edges, columns, and project summary.
+- `GET /api/metadata/revision`: Return the current graph metadata revision and refresh timestamp.
 - `GET /search?q=...`: Return model/source/exposure matches for slash search.
 - `POST /actions/node/{node_id}/build`: Start `dbt build --select <node>` for a node and return created task state.

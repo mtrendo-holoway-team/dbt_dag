@@ -1,5 +1,6 @@
 from pathlib import Path
 import pytest
+from typing import cast
 from unittest.mock import Mock
 
 from litestar import Litestar
@@ -9,12 +10,15 @@ from litestar.testing import TestClient
 from dbt_dag.db.session import create_db_engine
 from dbt_dag.db.session import create_session_factory
 from dbt_dag.db.session import init_db
-from dbt_dag.graph.builder import build_graph
-from dbt_dag.manifest.parser import load_manifest
+from dbt_dag.metadata.artifacts import RunResultsArtifactReader
+from dbt_dag.metadata.service import RuntimeMetadataService
+from dbt_dag.metadata.warehouse import WarehouseMetadataReader
+from dbt_dag.metadata.watcher import MetadataWatcher
 from dbt_dag.settings import Settings
 from dbt_dag.tasks.repository import NodeTaskRepository
 from dbt_dag.web.controllers import pages
 from dbt_dag.web.controllers.pages import PagesController
+from dbt_dag.web.graph_state import GraphStateStore
 from dbt_dag.web.state import AppState
 
 
@@ -30,6 +34,7 @@ def test_graph_endpoint_returns_documented_shape(dbt_project: Path, tmp_path: Pa
     assert body["project"]["tests_count"] == 1
     assert len(body["nodes"]) == 3
     assert {node["package_name"] for node in body["nodes"]} == {"demo"}
+    assert body["nodes"][0]["runtime"]["border_width_px"] == 1
 
 
 def test_node_inspector_returns_name_and_description(dbt_project: Path, tmp_path: Path) -> None:
@@ -40,6 +45,16 @@ def test_node_inspector_returns_name_and_description(dbt_project: Path, tmp_path
     assert response.status_code == 200
     assert "stg_orders" in response.text
     assert "Staged orders" in response.text
+    assert "Last update" in response.text
+
+
+def test_metadata_revision_endpoint_returns_revision(dbt_project: Path, tmp_path: Path) -> None:
+    client = _client(dbt_project, tmp_path)
+
+    response = client.get("/api/metadata/revision")
+
+    assert response.status_code == 200
+    assert response.json()["revision"] == 1
 
 
 def test_build_action_creates_task(dbt_project: Path, tmp_path: Path) -> None:
@@ -70,7 +85,6 @@ def test_static_file_serves_built_assets(
 
 
 def _client(dbt_project: Path, tmp_path: Path) -> TestClient[Litestar]:
-    manifest = load_manifest(dbt_project / "target" / "manifest.json")
     engine = create_db_engine(tmp_path / "app.sqlite")
     init_db(engine)
     repository = NodeTaskRepository(create_session_factory(engine))
@@ -78,6 +92,11 @@ def _client(dbt_project: Path, tmp_path: Path) -> TestClient[Litestar]:
     task_runner.start_build.side_effect = lambda node_id: repository.create(
         node_id, f"dbt build --select {node_id}"
     )
+    graph_store = GraphStateStore(
+        dbt_project / "target" / "manifest.json",
+        _empty_metadata_service(),
+    )
+    metadata_watcher = MetadataWatcher(graph_store)
     state = AppState(
         settings=Settings(
             app_host="127.0.0.1",
@@ -87,9 +106,22 @@ def _client(dbt_project: Path, tmp_path: Path) -> TestClient[Litestar]:
             dbt_profiles_dir=None,
             dbt_target=None,
         ),
-        manifest=manifest,
-        graph=build_graph(manifest),
+        graph_store=graph_store,
         task_repository=repository,
         task_runner=task_runner,
+        metadata_watcher=metadata_watcher,
+        warehouse_adapter=Mock(),
     )
     return TestClient(Litestar(route_handlers=[PagesController], state=State({"app_state": state})))
+
+
+def _empty_metadata_service() -> RuntimeMetadataService:
+    artifact_reader = Mock()
+    artifact_reader.read.return_value = {}
+    artifact_reader.fingerprint.return_value = "empty"
+    warehouse_reader = Mock()
+    warehouse_reader.read.return_value = {}
+    return RuntimeMetadataService(
+        cast(RunResultsArtifactReader, artifact_reader),
+        cast(WarehouseMetadataReader, warehouse_reader),
+    )

@@ -1,6 +1,21 @@
 from dataclasses import dataclass
+from datetime import datetime
+
+from dbt_dag.metadata.models import RuntimeDataSource
+from dbt_dag.metadata.models import RuntimeFreshness
 
 GRAPH_COLUMNS = ["sources", "stg", "int", "marts", "exposures", "other"]
+
+
+@dataclass(frozen=True)
+class GraphNodeRuntime:
+    execution_time_seconds: float | None
+    execution_time_source: RuntimeDataSource
+    last_updated_at: datetime | None
+    last_updated_source: RuntimeDataSource
+    freshness: RuntimeFreshness
+    border_width_px: float
+    border_color: str
 
 
 @dataclass(frozen=True)
@@ -12,6 +27,7 @@ class GraphNode:
     package_name: str
     description: str
     indicators: list[str]
+    runtime: GraphNodeRuntime
 
 
 @dataclass(frozen=True)

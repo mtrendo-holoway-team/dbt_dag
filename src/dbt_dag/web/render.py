@@ -5,6 +5,9 @@ from typing import Any
 
 from dbt_dag.graph.models import ProjectSummary
 from dbt_dag.manifest.models import DbtManifestNode
+from dbt_dag.metadata.models import empty_node_runtime_metadata
+from dbt_dag.metadata.models import NodeRuntimeMetadata
+from dbt_dag.metadata.models import RuntimeDataSource
 from dbt_dag.tasks.models import NodeTaskDTO
 
 STATIC_ROOT = Path(__file__).parent / "static"
@@ -107,7 +110,12 @@ def render_project_inspector(project: ProjectSummary) -> str:
 """
 
 
-def render_node_inspector(node: DbtManifestNode, tasks_html: str) -> str:
+def render_node_inspector(
+    node: DbtManifestNode,
+    runtime: NodeRuntimeMetadata | None,
+    tasks_html: str,
+) -> str:
+    runtime = runtime or empty_node_runtime_metadata()
     return f"""
 <section class="space-y-5">
   <header>
@@ -119,6 +127,7 @@ def render_node_inspector(node: DbtManifestNode, tasks_html: str) -> str:
     <h2 class="text-sm font-medium">Description</h2>
     <p class="text-sm leading-6 text-zinc-300">{escape(node.description or "No description.")}</p>
   </section>
+  {_render_runtime_metadata(runtime)}
   <section class="space-y-3">
     <h2 class="text-sm font-medium">Actions</h2>
     <button class="btn" hx-post="/actions/node/{escape(node.unique_id)}/build" hx-target="#node-tasks" hx-swap="outerHTML">Run build</button>
@@ -126,6 +135,52 @@ def render_node_inspector(node: DbtManifestNode, tasks_html: str) -> str:
   {tasks_html}
 </section>
 """
+
+
+def _render_runtime_metadata(runtime: NodeRuntimeMetadata) -> str:
+    updated = (
+        runtime.last_updated_at.strftime("%Y-%m-%d %H:%M:%S MSK")
+        if runtime.last_updated_at is not None
+        else "No data"
+    )
+    execution_time = (
+        f"{runtime.execution_time_seconds:.2f} s"
+        if runtime.execution_time_seconds is not None
+        else "No data"
+    )
+    updated_source = _source_label(runtime.last_updated_source)
+    execution_source = _source_label(runtime.execution_time_source)
+    return f"""
+  <section class="space-y-3">
+    <h2 class="text-sm font-medium">Last update</h2>
+    <dl class="grid grid-cols-2 gap-3 text-sm">
+      <div class="rounded border border-zinc-800 p-3">
+        <dt class="text-xs text-zinc-500">Updated at</dt>
+        <dd class="mt-1 text-zinc-200">{escape(updated)}</dd>
+      </div>
+      <div class="rounded border border-zinc-800 p-3">
+        <dt class="text-xs text-zinc-500">Freshness</dt>
+        <dd class="mt-1 text-zinc-200">{escape(runtime.freshness.value)}</dd>
+      </div>
+      <div class="rounded border border-zinc-800 p-3">
+        <dt class="text-xs text-zinc-500">Execution time</dt>
+        <dd class="mt-1 text-zinc-200">{escape(execution_time)}</dd>
+      </div>
+      <div class="rounded border border-zinc-800 p-3">
+        <dt class="text-xs text-zinc-500">Source</dt>
+        <dd class="mt-1 text-zinc-200">{escape(updated_source)} / {escape(execution_source)}</dd>
+      </div>
+    </dl>
+  </section>
+"""
+
+
+def _source_label(source: RuntimeDataSource) -> str:
+    if source == RuntimeDataSource.WAREHOUSE:
+        return "warehouse"
+    if source == RuntimeDataSource.RUN_RESULTS:
+        return "run_results"
+    return "none"
 
 
 def render_tasks(tasks: list[NodeTaskDTO]) -> str:

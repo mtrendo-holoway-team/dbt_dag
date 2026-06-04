@@ -32,23 +32,33 @@ class PagesController(Controller):
 
     @get("/api/graph")
     async def graph(self, request: Request[Any, Any, Any]) -> dict[str, Any]:
-        return _graph_payload(_state(request).graph)
+        return _graph_payload(_state(request).graph_store.snapshot().graph)
+
+    @get("/api/metadata/revision")
+    async def metadata_revision(self, request: Request[Any, Any, Any]) -> dict[str, Any]:
+        snapshot = _state(request).graph_store.snapshot()
+        return {
+            "revision": snapshot.revision,
+            "refreshed_at": snapshot.refreshed_at.isoformat(),
+        }
 
     @get("/inspector/project")
     async def project_inspector(self, request: Request[Any, Any, Any]) -> Response[str]:
-        return _html(render_project_inspector(_state(request).graph.project))
+        return _html(render_project_inspector(_state(request).graph_store.snapshot().graph.project))
 
     @get("/inspector/node/{node_id:str}")
     async def node_inspector(self, request: Request[Any, Any, Any], node_id: str) -> Response[str]:
         state = _state(request)
-        node = state.manifest.graph_nodes()[node_id]
+        snapshot = state.graph_store.snapshot()
+        node = snapshot.manifest.graph_nodes()[node_id]
+        runtime = snapshot.runtime_metadata.get(node_id)
         tasks = state.task_repository.list_for_node(node_id)
-        return _html(render_node_inspector(node, render_node_tasks(node_id, tasks)))
+        return _html(render_node_inspector(node, runtime, render_node_tasks(node_id, tasks)))
 
     @post("/actions/node/{node_id:str}/build", status_code=200)
     async def build_node(self, request: Request[Any, Any, Any], node_id: str) -> Response[str]:
         state = _state(request)
-        if node_id not in state.manifest.graph_nodes():
+        if node_id not in state.graph_store.snapshot().manifest.graph_nodes():
             return _html(render_node_tasks(node_id, []))
         state.task_runner.start_build(node_id)
         return _html(render_node_tasks(node_id, state.task_repository.list_for_node(node_id)))
@@ -64,7 +74,7 @@ class PagesController(Controller):
         if not query:
             return []
         matches = []
-        for node in _state(request).manifest.graph_nodes().values():
+        for node in _state(request).graph_store.snapshot().manifest.graph_nodes().values():
             if query in node.name.lower() or query in node.unique_id.lower():
                 matches.append(
                     {"id": node.unique_id, "label": node.name, "type": node.resource_type}
@@ -97,6 +107,19 @@ def _graph_payload(graph: Any) -> dict[str, Any]:
                 "package_name": node.package_name,
                 "description": node.description,
                 "indicators": node.indicators,
+                "runtime": {
+                    "execution_time_seconds": node.runtime.execution_time_seconds,
+                    "execution_time_source": node.runtime.execution_time_source.value,
+                    "last_updated_at": (
+                        node.runtime.last_updated_at.isoformat()
+                        if node.runtime.last_updated_at is not None
+                        else None
+                    ),
+                    "last_updated_source": node.runtime.last_updated_source.value,
+                    "freshness": node.runtime.freshness.value,
+                    "border_width_px": node.runtime.border_width_px,
+                    "border_color": node.runtime.border_color,
+                },
             }
             for node in graph.nodes
         ],
