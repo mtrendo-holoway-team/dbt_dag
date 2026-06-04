@@ -54,19 +54,9 @@ export type PositionedNode = GraphNode & {
 
 export type FilterMode = "upstream" | "downstream" | "reset";
 
-export type LaneBounds = {
-  column: string;
-  label: string;
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-};
-
 export type GraphLayout = {
   nodes: Map<string, PositionedNode>;
   edges: RoutedGraphEdge[];
-  lanes: LaneBounds[];
   width: number;
   height: number;
 };

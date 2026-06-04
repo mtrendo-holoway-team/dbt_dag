@@ -12,21 +12,10 @@ import type {
 
 export const graphPaddingX = 48;
 export const graphPaddingY = 140;
-export const laneTitleY = 124;
 export const nodeWidth = 210;
 export const nodeHeight = 42;
 
-const lanePaddingX = 32;
-const minLaneHeight = 260;
-
-const laneLabels: Record<string, string> = {
-  sources: "Источники",
-  stg: "Стейдж",
-  int: "Инт",
-  marts: "Март",
-  exposures: "Дашборды",
-  other: "Другое"
-};
+const minGraphHeight = 260;
 
 export async function layoutGraph(
   payload: GraphPayload,
@@ -36,23 +25,13 @@ export async function layoutGraph(
   const nodesById = new Map(visiblePayload.nodes.map((node) => [node.id, node]));
   const effectiveColumns = effectiveColumnByNode(visiblePayload);
   const elkLayout = await layoutOrder(visiblePayload, nodesById);
-  const mainColumns = visibleMainColumns(payload.columns);
   const positionedNodes = positionNodes(visiblePayload.nodes, effectiveColumns, elkLayout.nodePositions);
   const routedEdges = positionEdges(elkLayout.edges, elkLayout.nodePositions, positionedNodes);
   const graphBounds = graphBoundsForLayout(positionedNodes, routedEdges);
-  const nodesByColumn = groupNodesByColumn(visiblePayload.nodes, mainColumns);
-  const lanes = laneBoundsForColumns(
-    [...mainColumns, "other"],
-    nodesByColumn,
-    positionedNodes,
-    graphBounds.width,
-    graphBounds.height
-  );
 
   return {
     nodes: positionedNodes,
     edges: routedEdges,
-    lanes,
     width: graphBounds.width,
     height: graphBounds.height
   };
@@ -114,16 +93,6 @@ async function layoutOrder(
   };
 }
 
-function groupNodesByColumn(nodes: GraphNode[], mainColumns: string[]): Map<string, GraphNode[]> {
-  const grouped = new Map<string, GraphNode[]>();
-  for (const column of [...mainColumns, "other"]) grouped.set(column, []);
-  for (const node of nodes) {
-    const column = normalizeColumn(node.column, mainColumns);
-    grouped.get(column)?.push(node);
-  }
-  return grouped;
-}
-
 function positionNodes(
   nodes: GraphNode[],
   effectiveColumns: Map<string, string>,
@@ -171,7 +140,7 @@ function graphBoundsForLayout(
   nodes: Map<string, PositionedNode>,
   edges: RoutedGraphEdge[]
 ): { width: number; height: number } {
-  if (nodes.size === 0) return { width: graphPaddingX * 2, height: minLaneHeight };
+  if (nodes.size === 0) return { width: graphPaddingX * 2, height: minGraphHeight };
   let maxX = 0;
   let maxY = 0;
   nodes.forEach((node) => {
@@ -186,7 +155,7 @@ function graphBoundsForLayout(
   });
   return {
     width: maxX + graphPaddingX,
-    height: Math.max(minLaneHeight, maxY + graphPaddingY)
+    height: Math.max(minGraphHeight, maxY + graphPaddingY)
   };
 }
 
@@ -237,48 +206,6 @@ function mergeSectionPoints(
   return points;
 }
 
-function laneBoundsForColumns(
-  columns: string[],
-  nodesByColumn: Map<string, GraphNode[]>,
-  positionedNodes: Map<string, PositionedNode>,
-  graphWidth: number,
-  graphHeight: number
-): { column: string; label: string; x: number; y: number; width: number; height: number }[] {
-  const columnCenters = columns.flatMap((column) => {
-    const nodes = nodesByColumn.get(column) ?? [];
-    const positionedColumnNodes = nodes
-      .map((node) => positionedNodes.get(node.id))
-      .filter((node): node is PositionedNode => node !== undefined);
-    if (positionedColumnNodes.length === 0) return [];
-    const sortedCenters = positionedColumnNodes
-      .map((node) => node.x + node.width / 2)
-      .sort((left, right) => left - right);
-    const center = sortedCenters[Math.floor(sortedCenters.length / 2)];
-    return [{ column, center }];
-  });
-
-  return columnCenters.map((columnCenter, index) => {
-    const previousCenter = columnCenters[index - 1]?.center;
-    const nextCenter = columnCenters[index + 1]?.center;
-    const x = previousCenter === undefined
-      ? 0
-      : (previousCenter + columnCenter.center) / 2 - lanePaddingX;
-    const right = nextCenter === undefined
-      ? graphWidth
-      : (columnCenter.center + nextCenter) / 2 + lanePaddingX;
-    return [
-      {
-        column: columnCenter.column,
-        label: laneLabels[columnCenter.column] ?? columnCenter.column,
-        x: Math.max(0, x),
-        y: 0,
-        width: Math.max(right - x, lanePaddingX * 2),
-        height: graphHeight
-      }
-    ];
-  }).flat();
-}
-
 function effectiveColumnByNode(payload: GraphPayload): Map<string, string> {
   const mainColumns = visibleMainColumns(payload.columns);
   const mainColumnIndex = new Map(mainColumns.map((column, index) => [column, index]));
@@ -311,8 +238,4 @@ function effectiveColumnByNode(payload: GraphPayload): Map<string, string> {
       return [node.id, mainColumns[index] ?? "other"];
     })
   );
-}
-
-function normalizeColumn(column: string, mainColumns: string[]): string {
-  return mainColumns.includes(column) ? column : "other";
 }
