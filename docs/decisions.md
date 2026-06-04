@@ -121,3 +121,11 @@
 - Context: Partition row-count calendars need warehouse data from `stg__dbt_run_partition_info`, but querying BigQuery on every inspector repaint would be slower and less stable than serving a local snapshot.
 - Decision: Keep one current partition snapshot per model in SQLite, refresh it in background threads, and treat the local cache as stale when its newest warehouse `inserted_at` is older than the model update time from runtime metadata or `stg__dbt_run_results`.
 - Consequences: BigQuery model inspectors can render immediately from local state, stale calendars trigger background sync, and manual refresh uses the same replacement-based cache flow instead of storing snapshot history.
+
+## ADR-0016 Inspector Shell And HTMX Blocks
+
+- Created: 2026-06-04
+- Status: active
+- Context: The inspector sidebar had grown into a single server-rendered HTML string, and switching nodes could stall the sidebar while one response assembled every section.
+- Decision: Render a fast inspector shell first, then load inspector sections as separate tokenized HTMX blocks backed by a shared server-side inspector DTO and Jinja templates.
+- Consequences: Inspector presentation is modularized under `src/dbt_dag/inspectors`, stale block responses are isolated by selection token, and long-running or polling sections such as partitions and tasks can refresh independently without blocking node selection.

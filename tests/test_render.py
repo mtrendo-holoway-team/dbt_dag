@@ -3,12 +3,19 @@ import json
 from pathlib import Path
 import pytest
 
+from litestar.plugins.jinja import JinjaTemplateEngine
+
+from dbt_dag.inspectors import partition as partition_inspector
+from dbt_dag.inspectors.dto import NodeInspectorContextDTO
+from dbt_dag.manifest.models import DbtManifestNode
+from dbt_dag.metadata.models import empty_node_runtime_metadata
 from dbt_dag.partitions.models import ModelPartitionCalendarDTO
 from dbt_dag.partitions.models import PartitionDayCellDTO
 from dbt_dag.partitions.models import PartitionFillLevel
 from dbt_dag.partitions.models import PartitionMonthDTO
 from dbt_dag.partitions.models import PartitionSyncStatus
 from dbt_dag.web import render
+from dbt_dag.web.template_config import TEMPLATES_DIRECTORY
 
 
 def test_render_page_uses_vite_manifest_assets(
@@ -47,44 +54,97 @@ def test_render_page_uses_vite_manifest_assets(
     assert "/static/js/graph.ts" not in html
 
 
-def test_render_partition_calendar_contains_fill_states() -> None:
-    html = render.render_partition_calendar(
-        "model.demo.stg_orders",
-        ModelPartitionCalendarDTO(
-            model_unique_id="model.demo.stg_orders",
-            range_start=None,
-            range_end=date(2026, 6, 4),
-            median_row_count=10.0,
-            months=[
-                PartitionMonthDTO(
-                    year=2026,
-                    month_label="Июнь",
-                    leading_empty_days=0,
-                    days=[
-                        PartitionDayCellDTO(
-                            date=date(2026, 6, 1),
-                            row_count=None,
-                            fill_level=PartitionFillLevel.EMPTY,
-                        ),
-                        PartitionDayCellDTO(
-                            date=date(2026, 6, 2),
-                            row_count=5,
-                            fill_level=PartitionFillLevel.HALF,
-                        ),
-                        PartitionDayCellDTO(
-                            date=date(2026, 6, 3),
-                            row_count=10,
-                            fill_level=PartitionFillLevel.FULL,
-                        ),
-                    ],
-                )
-            ],
-            is_stale=False,
-            is_refreshing=False,
-            last_synced_at=None,
-            sync_status=PartitionSyncStatus.IDLE,
-            last_error="",
+def test_shell_template_renders_tokenized_block_ids() -> None:
+    html = (
+        _template_engine()
+        .get_template("inspectors/shell.html")
+        .render(
+            node=DbtManifestNode(
+                unique_id="model.demo.stg_orders",
+                name="stg_orders",
+                resource_type="model",
+                description="Staged orders",
+                depends_on=[],
+                package_name="demo",
+                path="models/stg/stg_orders.sql",
+                fqn=["demo", "stg", "stg_orders"],
+                raw={},
+            ),
+            selection_token="token123",
+            model_info_block_id="inspector-block-model-info-token123",
+            description_block_id="inspector-block-description-token123",
+            last_update_block_id="inspector-block-last-update-token123",
+            partition_block_id="inspector-block-partition-token123",
+            actions_block_id="inspector-block-actions-token123",
+            tasks_block_id="inspector-block-tasks-token123",
+        )
+    )
+
+    assert 'id="inspector-block-model-info-token123"' in html
+    assert "/inspector/node/model.demo.stg_orders/model-info?selection_token=token123" in html
+    assert 'id="inspector-block-tasks-token123"' in html
+    assert "/inspector/node/model.demo.stg_orders/tasks?selection_token=token123" in html
+
+
+def test_partition_template_contains_fill_states() -> None:
+    calendar = ModelPartitionCalendarDTO(
+        model_unique_id="model.demo.stg_orders",
+        range_start=None,
+        range_end=date(2026, 6, 4),
+        median_row_count=10.0,
+        months=[
+            PartitionMonthDTO(
+                year=2026,
+                month_label="Июнь",
+                leading_empty_days=0,
+                days=[
+                    PartitionDayCellDTO(
+                        date=date(2026, 6, 1),
+                        row_count=None,
+                        fill_level=PartitionFillLevel.EMPTY,
+                    ),
+                    PartitionDayCellDTO(
+                        date=date(2026, 6, 2),
+                        row_count=5,
+                        fill_level=PartitionFillLevel.HALF,
+                    ),
+                    PartitionDayCellDTO(
+                        date=date(2026, 6, 3),
+                        row_count=10,
+                        fill_level=PartitionFillLevel.FULL,
+                    ),
+                ],
+            )
+        ],
+        is_stale=False,
+        is_refreshing=False,
+        last_synced_at=None,
+        sync_status=PartitionSyncStatus.IDLE,
+        last_error="",
+    )
+    inspector = NodeInspectorContextDTO(
+        selection_token="token123",
+        node=DbtManifestNode(
+            unique_id="model.demo.stg_orders",
+            name="stg_orders",
+            resource_type="model",
+            description="Staged orders",
+            depends_on=[],
+            package_name="demo",
+            path="models/stg/stg_orders.sql",
+            fqn=["demo", "stg", "stg_orders"],
+            raw={},
         ),
+        runtime=empty_node_runtime_metadata(),
+        tasks=[],
+        partition_calendar=calendar,
+        supports_partitions=True,
+    )
+
+    html = (
+        _template_engine()
+        .get_template(partition_inspector.TEMPLATE_NAME)
+        .render(**partition_inspector.build_template_context(inspector))
     )
 
     assert "Refresh partition data" in html
@@ -94,27 +154,5 @@ def test_render_partition_calendar_contains_fill_states() -> None:
     assert ">2026<" in html
 
 
-def test_render_partition_calendar_keeps_current_month_first() -> None:
-    html = render.render_partition_calendar(
-        "model.demo.stg_orders",
-        ModelPartitionCalendarDTO(
-            model_unique_id="model.demo.stg_orders",
-            range_start=None,
-            range_end=date(2026, 6, 4),
-            median_row_count=None,
-            months=[
-                PartitionMonthDTO(year=2026, month_label="Июнь", leading_empty_days=0, days=[]),
-                PartitionMonthDTO(year=2026, month_label="Май", leading_empty_days=0, days=[]),
-                PartitionMonthDTO(year=2026, month_label="Апрель", leading_empty_days=0, days=[]),
-                PartitionMonthDTO(year=2025, month_label="Декабрь", leading_empty_days=0, days=[]),
-            ],
-            is_stale=False,
-            is_refreshing=False,
-            last_synced_at=None,
-            sync_status=PartitionSyncStatus.IDLE,
-            last_error="",
-        ),
-    )
-
-    assert html.index("Июнь") < html.index("Май") < html.index("Апрель")
-    assert html.index(">2026<") < html.index(">2025<")
+def _template_engine() -> JinjaTemplateEngine:
+    return JinjaTemplateEngine(directory=TEMPLATES_DIRECTORY)

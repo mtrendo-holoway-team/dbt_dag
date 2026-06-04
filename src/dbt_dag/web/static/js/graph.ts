@@ -255,11 +255,20 @@ function walkGraph(startNodeId: string, adjacency: Map<string, Set<string>>): Se
 function openInspector(nodeId: string): void {
   const inspector = document.getElementById("inspector");
   if (!inspector) return;
-  inspector.setAttribute("hx-get", `/inspector/node/${encodeURIComponent(nodeId)}`);
-  htmx.ajax("GET", `/inspector/node/${encodeURIComponent(nodeId)}`, {
+  const selectionToken = createSelectionToken();
+  const url = `/inspector/node/${encodeURIComponent(nodeId)}?selection_token=${selectionToken}`;
+  inspector.setAttribute("hx-get", url);
+  htmx.ajax("GET", url, {
     target: "#inspector",
     swap: "innerHTML"
   });
+}
+
+function createSelectionToken(): string {
+  if (globalThis.crypto && "randomUUID" in globalThis.crypto) {
+    return globalThis.crypto.randomUUID().replaceAll("-", "");
+  }
+  return `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}`;
 }
 
 async function loadMetadataRevision(): Promise<number> {

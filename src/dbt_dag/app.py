@@ -10,6 +10,7 @@ from dbt_dag.settings import load_settings
 from dbt_dag.web.controllers.pages import PagesController
 from dbt_dag.web.state import AppState
 from dbt_dag.web.state import build_app_state
+from dbt_dag.web.template_config import create_template_config
 
 logger = logging.getLogger(__name__)
 STARTUP_TOTAL_STEPS = 9
@@ -31,6 +32,7 @@ def create_app() -> Litestar:
         state=State({"app_state": app_state}),
         on_startup=[_start_metadata_watcher],
         on_shutdown=[_stop_metadata_watcher],
+        template_config=create_template_config(),
     )
 
 

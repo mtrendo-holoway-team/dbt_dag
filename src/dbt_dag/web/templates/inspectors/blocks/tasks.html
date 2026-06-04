@@ -1,0 +1,24 @@
+<section
+  id="{{ block_id }}"
+  class="space-y-3 rounded-lg border border-zinc-800 bg-zinc-950/40 p-4"
+  hx-get="/inspector/node/{{ inspector.node.unique_id | urlencode }}/tasks?selection_token={{ inspector.selection_token }}"
+  hx-trigger="every 3s"
+  hx-swap="outerHTML"
+>
+  <h2 class="text-sm font-medium">Tasks</h2>
+  {% if inspector.tasks %}
+  <div class="space-y-2">
+    {% for task in inspector.tasks %}
+    <article class="rounded-lg border border-zinc-800 bg-zinc-900/70 p-3 text-sm">
+      <div class="flex items-center justify-between gap-3">
+        <span class="font-medium">{{ task.status.value }}</span>
+        <span class="text-xs text-zinc-500">#{{ task.task_id }}</span>
+      </div>
+      <p class="mt-2 break-all text-xs text-zinc-400">{{ task.command }}</p>
+    </article>
+    {% endfor %}
+  </div>
+  {% else %}
+  <p class="text-sm text-zinc-500">No tasks yet.</p>
+  {% endif %}
+</section>

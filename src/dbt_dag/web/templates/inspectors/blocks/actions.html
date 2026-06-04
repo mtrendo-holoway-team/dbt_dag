@@ -1,0 +1,11 @@
+<section id="{{ block_id }}" class="space-y-3 rounded-lg border border-zinc-800 bg-zinc-950/40 p-4">
+  <h2 class="text-sm font-medium">Actions</h2>
+  <button
+    class="btn"
+    hx-post="/actions/node/{{ inspector.node.unique_id | urlencode }}/build?selection_token={{ inspector.selection_token }}"
+    hx-target="#{{ tasks_block_id }}"
+    hx-swap="outerHTML"
+  >
+    Run build
+  </button>
+</section>

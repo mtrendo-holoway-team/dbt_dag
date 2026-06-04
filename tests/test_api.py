@@ -24,6 +24,7 @@ from dbt_dag.web.controllers import pages
 from dbt_dag.web.controllers.pages import PagesController
 from dbt_dag.web.graph_state import GraphStateStore
 from dbt_dag.web.state import AppState
+from dbt_dag.web.template_config import create_template_config
 
 
 def test_graph_endpoint_returns_documented_shape(dbt_project: Path, tmp_path: Path) -> None:
@@ -41,16 +42,51 @@ def test_graph_endpoint_returns_documented_shape(dbt_project: Path, tmp_path: Pa
     assert body["nodes"][0]["runtime"]["border_width_px"] == 1
 
 
-def test_node_inspector_returns_name_and_description(dbt_project: Path, tmp_path: Path) -> None:
+def test_node_inspector_returns_shell_with_tokenized_blocks(
+    dbt_project: Path,
+    tmp_path: Path,
+) -> None:
     client = _client(dbt_project, tmp_path)
 
-    response = client.get("/inspector/node/model.demo.stg_orders")
+    response = client.get("/inspector/node/model.demo.stg_orders?selection_token=token123")
 
     assert response.status_code == 200
     assert "stg_orders" in response.text
+    assert 'id="inspector-block-model-info-token123"' in response.text
+    assert (
+        "/inspector/node/model.demo.stg_orders/model-info?selection_token=token123" in response.text
+    )
+
+
+def test_model_info_block_returns_name_and_full_id(dbt_project: Path, tmp_path: Path) -> None:
+    client = _client(dbt_project, tmp_path)
+
+    response = client.get("/inspector/node/model.demo.stg_orders/model-info?selection_token=abc")
+
+    assert response.status_code == 200
+    assert "Model info" in response.text
+    assert "stg_orders" in response.text
+    assert "model.demo.stg_orders" in response.text
+
+
+def test_description_block_returns_description(dbt_project: Path, tmp_path: Path) -> None:
+    client = _client(dbt_project, tmp_path)
+
+    response = client.get("/inspector/node/model.demo.stg_orders/description?selection_token=abc")
+
+    assert response.status_code == 200
+    assert "Description" in response.text
     assert "Staged orders" in response.text
+
+
+def test_last_update_block_returns_runtime_panel(dbt_project: Path, tmp_path: Path) -> None:
+    client = _client(dbt_project, tmp_path)
+
+    response = client.get("/inspector/node/model.demo.stg_orders/last-update?selection_token=abc")
+
+    assert response.status_code == 200
     assert "Last update" in response.text
-    assert "Partition data" in response.text
+    assert "Execution time" in response.text
 
 
 def test_metadata_revision_endpoint_returns_revision(dbt_project: Path, tmp_path: Path) -> None:
@@ -65,20 +101,24 @@ def test_metadata_revision_endpoint_returns_revision(dbt_project: Path, tmp_path
 def test_build_action_creates_task(dbt_project: Path, tmp_path: Path) -> None:
     client = _client(dbt_project, tmp_path)
 
-    response = client.post("/actions/node/model.demo.stg_orders/build")
+    response = client.post("/actions/node/model.demo.stg_orders/build?selection_token=token123")
 
     assert response.status_code == 200
     assert "dbt build --select model.demo.stg_orders" in response.text
+    assert 'id="inspector-block-tasks-token123"' in response.text
 
 
 def test_partition_partial_endpoint_returns_calendar(dbt_project: Path, tmp_path: Path) -> None:
     client = _client(dbt_project, tmp_path)
 
-    response = client.get("/inspector/node/model.demo.stg_orders/partitions")
+    response = client.get(
+        "/inspector/node/model.demo.stg_orders/partition?selection_token=token123"
+    )
 
     assert response.status_code == 200
     assert "Partition data" in response.text
     assert "Refresh partition data" in response.text
+    assert 'id="inspector-block-partition-token123"' in response.text
 
 
 def test_refresh_partition_action_starts_background_sync(
@@ -88,10 +128,49 @@ def test_refresh_partition_action_starts_background_sync(
     partition_runner = Mock()
     client = _client(dbt_project, tmp_path, partition_runner=partition_runner)
 
-    response = client.post("/actions/node/model.demo.stg_orders/refresh-partitions")
+    response = client.post(
+        "/actions/node/model.demo.stg_orders/refresh-partitions?selection_token=token123"
+    )
 
     assert response.status_code == 200
     partition_runner.start_refresh.assert_called_with("model.demo.stg_orders")
+    assert 'id="inspector-block-partition-token123"' in response.text
+
+
+def test_tasks_block_polls_with_selection_token(dbt_project: Path, tmp_path: Path) -> None:
+    client = _client(dbt_project, tmp_path)
+
+    response = client.get("/inspector/node/model.demo.stg_orders/tasks?selection_token=token123")
+
+    assert response.status_code == 200
+    assert 'id="inspector-block-tasks-token123"' in response.text
+    assert "/inspector/node/model.demo.stg_orders/tasks?selection_token=token123" in response.text
+
+
+def test_description_block_does_not_load_partition_or_tasks(
+    dbt_project: Path,
+    tmp_path: Path,
+) -> None:
+    partition_service = Mock()
+    partition_service.supports_partitions.return_value = True
+    partition_service.build_calendar.side_effect = AssertionError(
+        "description block should not build partition calendar"
+    )
+    task_repository = Mock()
+    task_repository.list_for_node.side_effect = AssertionError(
+        "description block should not load tasks"
+    )
+    client = _client(
+        dbt_project,
+        tmp_path,
+        partition_service=partition_service,
+        task_repository=task_repository,
+    )
+
+    response = client.get("/inspector/node/model.demo.stg_orders/description?selection_token=abc")
+
+    assert response.status_code == 200
+    assert "Staged orders" in response.text
 
 
 def test_static_file_serves_built_assets(
@@ -116,20 +195,24 @@ def _client(
     dbt_project: Path,
     tmp_path: Path,
     partition_runner: Mock | None = None,
+    partition_service: Mock | None = None,
+    task_repository: Mock | None = None,
 ) -> TestClient[Litestar]:
     engine = create_db_engine(tmp_path / "app.sqlite")
     init_db(engine)
-    repository = NodeTaskRepository(create_session_factory(engine))
+    repository = task_repository or NodeTaskRepository(create_session_factory(engine))
     task_runner = Mock()
-    task_runner.start_build.side_effect = lambda node_id: repository.create(
-        node_id, f"dbt build --select {node_id}"
-    )
+    if hasattr(repository, "create"):
+        task_runner.start_build.side_effect = lambda node_id: repository.create(
+            node_id, f"dbt build --select {node_id}"
+        )
     graph_store = GraphStateStore(
         dbt_project / "target" / "manifest.json",
         _empty_metadata_service(),
     )
     metadata_watcher = MetadataWatcher(graph_store)
     partition_runner = partition_runner or Mock()
+    partition_service = partition_service or _partition_service()
     state = AppState(
         settings=Settings(
             app_host="127.0.0.1",
@@ -145,10 +228,16 @@ def _client(
         metadata_watcher=metadata_watcher,
         warehouse_adapter=Mock(),
         partition_repository=Mock(),
-        partition_service=_partition_service(),
+        partition_service=partition_service,
         partition_runner=partition_runner,
     )
-    return TestClient(Litestar(route_handlers=[PagesController], state=State({"app_state": state})))
+    return TestClient(
+        Litestar(
+            route_handlers=[PagesController],
+            state=State({"app_state": state}),
+            template_config=create_template_config(),
+        )
+    )
 
 
 def _empty_metadata_service() -> RuntimeMetadataService:

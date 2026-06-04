@@ -1,0 +1,68 @@
+{% from "inspectors/macros.html" import loading_block %}
+<section class="space-y-5">
+  <header class="space-y-1">
+    <p class="text-xs uppercase tracking-[0.25em] text-cyan-400">{{ node.resource_type }}</p>
+    <h1 class="text-lg font-semibold">{{ node.name }}</h1>
+    <p class="break-all text-xs text-zinc-500">{{ node.unique_id }}</p>
+  </header>
+
+  <div
+    id="{{ model_info_block_id }}"
+    hx-get="/inspector/node/{{ node.unique_id | urlencode }}/model-info?selection_token={{ selection_token }}"
+    hx-trigger="load"
+    hx-target="this"
+    hx-swap="outerHTML"
+  >
+    {{ loading_block("Model info") }}
+  </div>
+
+  <div
+    id="{{ description_block_id }}"
+    hx-get="/inspector/node/{{ node.unique_id | urlencode }}/description?selection_token={{ selection_token }}"
+    hx-trigger="load"
+    hx-target="this"
+    hx-swap="outerHTML"
+  >
+    {{ loading_block("Description") }}
+  </div>
+
+  <div
+    id="{{ last_update_block_id }}"
+    hx-get="/inspector/node/{{ node.unique_id | urlencode }}/last-update?selection_token={{ selection_token }}"
+    hx-trigger="load"
+    hx-target="this"
+    hx-swap="outerHTML"
+  >
+    {{ loading_block("Last update") }}
+  </div>
+
+  <div
+    id="{{ partition_block_id }}"
+    hx-get="/inspector/node/{{ node.unique_id | urlencode }}/partition?selection_token={{ selection_token }}"
+    hx-trigger="load"
+    hx-target="this"
+    hx-swap="outerHTML"
+  >
+    {{ loading_block("Partition") }}
+  </div>
+
+  <div
+    id="{{ actions_block_id }}"
+    hx-get="/inspector/node/{{ node.unique_id | urlencode }}/actions?selection_token={{ selection_token }}"
+    hx-trigger="load"
+    hx-target="this"
+    hx-swap="outerHTML"
+  >
+    {{ loading_block("Actions") }}
+  </div>
+
+  <div
+    id="{{ tasks_block_id }}"
+    hx-get="/inspector/node/{{ node.unique_id | urlencode }}/tasks?selection_token={{ selection_token }}"
+    hx-trigger="load"
+    hx-target="this"
+    hx-swap="outerHTML"
+  >
+    {{ loading_block("Tasks") }}
+  </div>
+</section>

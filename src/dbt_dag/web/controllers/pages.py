@@ -7,15 +7,21 @@ from litestar import post
 from litestar import Request
 from litestar.enums import MediaType
 from litestar.response import Response
+from litestar.response import Template
 
-from dbt_dag.web.render import render_node_inspector
-from dbt_dag.web.render import render_node_tasks
+from dbt_dag.inspectors import actions as actions_inspector
+from dbt_dag.inspectors import description as description_inspector
+from dbt_dag.inspectors import last_update as last_update_inspector
+from dbt_dag.inspectors import model_info as model_info_inspector
+from dbt_dag.inspectors import NodeInspectorContextFactory
+from dbt_dag.inspectors import partition as partition_inspector
+from dbt_dag.inspectors import tasks as tasks_inspector
+from dbt_dag.inspectors.utils import block_id
 from dbt_dag.web.render import render_page
-from dbt_dag.web.render import render_partition_calendar
-from dbt_dag.web.render import render_project_inspector
 from dbt_dag.web.state import AppState
 
 STATIC_ROOT = Path(__file__).parents[1] / "static"
+_context_factory = NodeInspectorContextFactory()
 
 
 def _state(request: Request[Any, Any, Any]) -> AppState:
@@ -44,65 +50,169 @@ class PagesController(Controller):
         }
 
     @get("/inspector/project")
-    async def project_inspector(self, request: Request[Any, Any, Any]) -> Response[str]:
-        return _html(render_project_inspector(_state(request).graph_store.snapshot().graph.project))
+    async def project_inspector(self, request: Request[Any, Any, Any]) -> Template:
+        return Template(
+            template_name="inspectors/project.html",
+            context={"project": _state(request).graph_store.snapshot().graph.project},
+        )
 
     @get("/inspector/node/{node_id:str}")
-    async def node_inspector(self, request: Request[Any, Any, Any], node_id: str) -> Response[str]:
+    async def node_inspector(
+        self,
+        request: Request[Any, Any, Any],
+        node_id: str,
+        selection_token: str = "initial",
+    ) -> Template:
         state = _state(request)
         snapshot = state.graph_store.snapshot()
         node = snapshot.manifest.graph_nodes()[node_id]
-        runtime = snapshot.runtime_metadata.get(node_id)
-        tasks = state.task_repository.list_for_node(node_id)
-        partition_html = _render_partition_block(state, node.resource_type, node_id, runtime)
-        return _html(
-            render_node_inspector(
-                node,
-                runtime,
-                render_node_tasks(node_id, tasks),
-                partition_html=partition_html,
-            )
+        return Template(
+            template_name="inspectors/shell.html",
+            context={
+                "node": node,
+                "selection_token": selection_token,
+                "model_info_block_id": block_id("model-info", selection_token),
+                "description_block_id": block_id("description", selection_token),
+                "last_update_block_id": block_id("last-update", selection_token),
+                "partition_block_id": block_id("partition", selection_token),
+                "actions_block_id": block_id("actions", selection_token),
+                "tasks_block_id": block_id("tasks", selection_token),
+            },
         )
 
-    @get("/inspector/node/{node_id:str}/partitions")
+    @get("/inspector/node/{node_id:str}/model-info")
+    async def node_model_info_inspector(
+        self,
+        request: Request[Any, Any, Any],
+        node_id: str,
+        selection_token: str = "initial",
+    ) -> Template:
+        inspector = _context_factory.build(_state(request), node_id, selection_token)
+        return Template(
+            template_name=model_info_inspector.TEMPLATE_NAME,
+            context=model_info_inspector.build_template_context(inspector),
+        )
+
+    @get("/inspector/node/{node_id:str}/description")
+    async def node_description_inspector(
+        self,
+        request: Request[Any, Any, Any],
+        node_id: str,
+        selection_token: str = "initial",
+    ) -> Template:
+        inspector = _context_factory.build(_state(request), node_id, selection_token)
+        return Template(
+            template_name=description_inspector.TEMPLATE_NAME,
+            context=description_inspector.build_template_context(inspector),
+        )
+
+    @get("/inspector/node/{node_id:str}/last-update")
+    async def node_last_update_inspector(
+        self,
+        request: Request[Any, Any, Any],
+        node_id: str,
+        selection_token: str = "initial",
+    ) -> Template:
+        inspector = _context_factory.build(_state(request), node_id, selection_token)
+        return Template(
+            template_name=last_update_inspector.TEMPLATE_NAME,
+            context=last_update_inspector.build_template_context(inspector),
+        )
+
+    @get("/inspector/node/{node_id:str}/partition")
     async def node_partition_inspector(
         self,
         request: Request[Any, Any, Any],
         node_id: str,
-    ) -> Response[str]:
-        state = _state(request)
-        snapshot = state.graph_store.snapshot()
-        runtime = snapshot.runtime_metadata.get(node_id)
-        node = snapshot.manifest.graph_nodes()[node_id]
-        return _html(_render_partition_block(state, node.resource_type, node_id, runtime))
+        selection_token: str = "initial",
+    ) -> Template:
+        inspector = _context_factory.build(
+            _state(request),
+            node_id,
+            selection_token,
+            include_partition_calendar=True,
+        )
+        return Template(
+            template_name=partition_inspector.TEMPLATE_NAME,
+            context=partition_inspector.build_template_context(inspector),
+        )
+
+    @get("/inspector/node/{node_id:str}/actions")
+    async def node_actions_inspector(
+        self,
+        request: Request[Any, Any, Any],
+        node_id: str,
+        selection_token: str = "initial",
+    ) -> Template:
+        inspector = _context_factory.build(_state(request), node_id, selection_token)
+        return Template(
+            template_name=actions_inspector.TEMPLATE_NAME,
+            context=actions_inspector.build_template_context(inspector),
+        )
 
     @post("/actions/node/{node_id:str}/build", status_code=200)
-    async def build_node(self, request: Request[Any, Any, Any], node_id: str) -> Response[str]:
+    async def build_node(
+        self,
+        request: Request[Any, Any, Any],
+        node_id: str,
+        selection_token: str = "initial",
+    ) -> Response[str] | Template:
         state = _state(request)
         if node_id not in state.graph_store.snapshot().manifest.graph_nodes():
-            return _html(render_node_tasks(node_id, []))
+            return Response(content="", media_type=MediaType.HTML, status_code=404)
         state.task_runner.start_build(node_id)
-        return _html(render_node_tasks(node_id, state.task_repository.list_for_node(node_id)))
+        inspector = _context_factory.build(
+            state,
+            node_id,
+            selection_token,
+            include_tasks=True,
+        )
+        return Template(
+            template_name=tasks_inspector.TEMPLATE_NAME,
+            context=tasks_inspector.build_template_context(inspector),
+        )
 
     @post("/actions/node/{node_id:str}/refresh-partitions", status_code=200)
     async def refresh_node_partitions(
         self,
         request: Request[Any, Any, Any],
         node_id: str,
-    ) -> Response[str]:
+        selection_token: str = "initial",
+    ) -> Response[str] | Template:
         state = _state(request)
         snapshot = state.graph_store.snapshot()
         node = snapshot.manifest.graph_nodes().get(node_id)
         if node is None:
-            return _html("")
+            return Response(content="", media_type=MediaType.HTML, status_code=404)
         state.partition_runner.start_refresh(node_id)
-        runtime = snapshot.runtime_metadata.get(node_id)
-        return _html(_render_partition_block(state, node.resource_type, node_id, runtime))
+        inspector = _context_factory.build(
+            state,
+            node_id,
+            selection_token,
+            include_partition_calendar=True,
+        )
+        return Template(
+            template_name=partition_inspector.TEMPLATE_NAME,
+            context=partition_inspector.build_template_context(inspector),
+        )
 
-    @get("/tasks/node/{node_id:str}")
-    async def node_tasks(self, request: Request[Any, Any, Any], node_id: str) -> Response[str]:
-        state = _state(request)
-        return _html(render_node_tasks(node_id, state.task_repository.list_for_node(node_id)))
+    @get("/inspector/node/{node_id:str}/tasks")
+    async def node_tasks(
+        self,
+        request: Request[Any, Any, Any],
+        node_id: str,
+        selection_token: str = "initial",
+    ) -> Template:
+        inspector = _context_factory.build(
+            _state(request),
+            node_id,
+            selection_token,
+            include_tasks=True,
+        )
+        return Template(
+            template_name=tasks_inspector.TEMPLATE_NAME,
+            context=tasks_inspector.build_template_context(inspector),
+        )
 
     @get("/search")
     async def search(self, request: Request[Any, Any, Any], q: str = "") -> list[dict[str, str]]:
@@ -169,24 +279,3 @@ def _graph_payload(graph: Any) -> dict[str, Any]:
             "tests_count": graph.project.tests_count,
         },
     }
-
-
-def _render_partition_block(
-    state: AppState,
-    resource_type: str,
-    node_id: str,
-    runtime: Any,
-) -> str:
-    if resource_type != "model" or not state.partition_service.supports_partitions():
-        return ""
-    calendar = state.partition_service.build_calendar(
-        node_id,
-        runtime.last_updated_at if runtime is not None else None,
-    )
-    if calendar.is_stale and not calendar.is_refreshing:
-        state.partition_runner.start_refresh(node_id)
-        calendar = state.partition_service.build_calendar(
-            node_id,
-            runtime.last_updated_at if runtime is not None else None,
-        )
-    return render_partition_calendar(node_id, calendar)
