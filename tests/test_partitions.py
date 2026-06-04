@@ -50,6 +50,62 @@ def test_partition_warehouse_reader_returns_latest_rows_by_partition(tmp_path: P
     assert "model.demo.stg_orders" in adapter.run_query.call_args.args[0]
 
 
+def test_partition_warehouse_reader_falls_back_to_partition_key_for_date(tmp_path: Path) -> None:
+    adapter = Mock()
+    adapter.adapter_kind = AdapterKind.BIGQUERY
+    adapter.run_query.return_value = QueryResult(
+        columns=["partition", "partition_date", "row_count", "inserted_at"],
+        rows=[
+            {
+                "partition": "2026-06-01",
+                "partition_date": None,
+                "row_count": 20,
+                "inserted_at": datetime(2026, 6, 4, 12, tzinfo=MSK),
+            }
+        ],
+    )
+
+    reader = BigQueryPartitionWarehouseReader(adapter, _runtime_profile(tmp_path))
+    rows = reader.fetch_latest_partition_snapshot("model.demo.stg_orders")
+
+    assert rows == [
+        PartitionSnapshotRow(
+            partition_key="2026-06-01",
+            partition_date=date(2026, 6, 1),
+            row_count=20,
+            source_inserted_at=datetime(2026, 6, 4, 12, tzinfo=MSK),
+        )
+    ]
+
+
+def test_partition_warehouse_reader_accepts_partition_date_string(tmp_path: Path) -> None:
+    adapter = Mock()
+    adapter.adapter_kind = AdapterKind.BIGQUERY
+    adapter.run_query.return_value = QueryResult(
+        columns=["partition", "partition_date", "row_count", "inserted_at"],
+        rows=[
+            {
+                "partition": "p20260601",
+                "partition_date": "2026-06-01",
+                "row_count": 20,
+                "inserted_at": datetime(2026, 6, 4, 12, tzinfo=MSK),
+            }
+        ],
+    )
+
+    reader = BigQueryPartitionWarehouseReader(adapter, _runtime_profile(tmp_path))
+    rows = reader.fetch_latest_partition_snapshot("model.demo.stg_orders")
+
+    assert rows == [
+        PartitionSnapshotRow(
+            partition_key="p20260601",
+            partition_date=date(2026, 6, 1),
+            row_count=20,
+            source_inserted_at=datetime(2026, 6, 4, 12, tzinfo=MSK),
+        )
+    ]
+
+
 def test_partition_repository_replaces_snapshot_and_sync_state(tmp_path: Path) -> None:
     repository = _repository(tmp_path)
 

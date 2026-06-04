@@ -83,7 +83,7 @@ where model_unique_id = {_quote_sql_string(model_unique_id)}
 
 
 def _partition_snapshot_row(row: dict[str, Any]) -> PartitionSnapshotRow:
-    partition_date = _as_date(row.get("partition_date"))
+    partition_date = _partition_date(row)
     if partition_date is None:
         raise ValueError("partition_date is required")
     return PartitionSnapshotRow(
@@ -95,7 +95,18 @@ def _partition_snapshot_row(row: dict[str, Any]) -> PartitionSnapshotRow:
 
 
 def _is_partition_snapshot_row(row: dict[str, Any]) -> bool:
-    return row.get("partition") is not None and row.get("row_count") is not None
+    return (
+        row.get("partition") is not None
+        and row.get("row_count") is not None
+        and _partition_date(row) is not None
+    )
+
+
+def _partition_date(row: dict[str, Any]) -> date | None:
+    partition_date = _as_date(row.get("partition_date"))
+    if partition_date is not None:
+        return partition_date
+    return _as_date(row.get("partition"))
 
 
 def _required_target_value(runtime_profile: DbtRuntimeProfile, key: str) -> str:
@@ -120,4 +131,9 @@ def _as_date(value: Any) -> date | None:
         return value
     if isinstance(value, datetime):
         return normalize_to_msk(value).date()
+    if isinstance(value, str):
+        try:
+            return date.fromisoformat(value)
+        except ValueError:
+            return None
     return None
