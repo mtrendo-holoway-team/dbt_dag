@@ -43,7 +43,7 @@ def build_template_context(inspector: NodeInspectorContextDTO) -> dict[str, Any]
         "median": _format_median(calendar),
         "status_label": partition_status_label(calendar),
         "status_class": partition_status_class(calendar),
-        "month_groups": _build_month_groups(calendar.months),
+        "month_groups": _build_month_groups(calendar.months, calendar.median_row_count),
     }
 
 
@@ -61,12 +61,19 @@ def _format_last_synced(calendar: ModelPartitionCalendarDTO) -> str:
     return calendar.last_synced_at.strftime("%Y-%m-%d %H:%M:%S MSK")
 
 
-def _build_month_groups(months: list[PartitionMonthDTO]) -> list[dict[str, Any]]:
+def _build_month_groups(
+    months: list[PartitionMonthDTO],
+    overall_median_row_count: float | None,
+) -> list[dict[str, Any]]:
     reference_median_by_date = _reference_median_by_date(months)
+    use_simple_presence_colors = _use_simple_presence_colors(overall_median_row_count)
     return [
         {
             "year": months_in_year[0].year,
-            "months": [_build_month(month, reference_median_by_date) for month in months_in_year],
+            "months": [
+                _build_month(month, reference_median_by_date, use_simple_presence_colors)
+                for month in months_in_year
+            ],
         }
         for months_in_year in group_months_by_year(months)
     ]
@@ -75,18 +82,19 @@ def _build_month_groups(months: list[PartitionMonthDTO]) -> list[dict[str, Any]]
 def _build_month(
     month: PartitionMonthDTO,
     reference_median_by_date: dict[str, float | None],
+    use_simple_presence_colors: bool,
 ) -> dict[str, Any]:
     return {
         "month_label": month.month_label,
         "leading_empty_days": range(month.leading_empty_days),
         "days": [
-            _build_day(day)
+            _build_day(day, use_simple_presence_colors)
             for day in _annotate_reference_medians(month.days, reference_median_by_date)
         ],
     }
 
 
-def _build_day(day_reference: _DayReference) -> dict[str, str]:
+def _build_day(day_reference: _DayReference, use_simple_presence_colors: bool) -> dict[str, str]:
     day = day_reference.day
     title = (
         f"{day.date.isoformat()} - {day.row_count} rows"
@@ -95,7 +103,11 @@ def _build_day(day_reference: _DayReference) -> dict[str, str]:
     )
     return {
         "title": title,
-        "color_class": _partition_day_color_class(day.row_count, day_reference.reference_median),
+        "color_class": _partition_day_color_class(
+            day.row_count,
+            day_reference.reference_median,
+            use_simple_presence_colors,
+        ),
     }
 
 
@@ -137,9 +149,19 @@ def _reference_median(days: list[PartitionDayCellDTO], current_index: int) -> fl
     return float(median(previous_values))
 
 
-def _partition_day_color_class(row_count: int | None, reference_median: float | None) -> str:
+def _use_simple_presence_colors(overall_median_row_count: float | None) -> bool:
+    return overall_median_row_count is not None and overall_median_row_count < 100
+
+
+def _partition_day_color_class(
+    row_count: int | None,
+    reference_median: float | None,
+    use_simple_presence_colors: bool,
+) -> str:
     if row_count is None:
         return "partition-day-no-data"
+    if use_simple_presence_colors:
+        return "partition-day-normal"
     ratio = _partition_day_ratio(row_count, reference_median)
     if ratio is None:
         return "partition-day-normal"

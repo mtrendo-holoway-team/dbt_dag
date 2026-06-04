@@ -149,10 +149,77 @@ def test_partition_template_contains_fill_states() -> None:
 
     assert "Refresh partition data" in html
     assert "partition-day-no-data" in html
-    assert "partition-day-low" in html
     assert "partition-day-normal" in html
     assert "2026-06-01 - No data" in html
     assert ">2026<" in html
+
+
+def test_partition_template_uses_green_only_for_small_medians() -> None:
+    calendar = ModelPartitionCalendarDTO(
+        model_unique_id="model.demo.stg_orders",
+        range_start=None,
+        range_end=date(2026, 6, 4),
+        median_row_count=99.0,
+        months=[
+            PartitionMonthDTO(
+                year=2026,
+                month_label="Июнь",
+                leading_empty_days=0,
+                days=[
+                    PartitionDayCellDTO(
+                        date=date(2026, 6, 1),
+                        row_count=None,
+                        fill_level=PartitionFillLevel.EMPTY,
+                    ),
+                    PartitionDayCellDTO(
+                        date=date(2026, 6, 2),
+                        row_count=1,
+                        fill_level=PartitionFillLevel.HALF,
+                    ),
+                    PartitionDayCellDTO(
+                        date=date(2026, 6, 3),
+                        row_count=200,
+                        fill_level=PartitionFillLevel.FULL,
+                    ),
+                ],
+            )
+        ],
+        is_stale=False,
+        is_refreshing=False,
+        last_synced_at=None,
+        sync_status=PartitionSyncStatus.IDLE,
+        last_error="",
+    )
+    inspector = NodeInspectorContextDTO(
+        selection_token="token123",
+        node=DbtManifestNode(
+            unique_id="model.demo.stg_orders",
+            name="stg_orders",
+            resource_type="model",
+            description="Staged orders",
+            depends_on=[],
+            package_name="demo",
+            path="models/stg/stg_orders.sql",
+            fqn=["demo", "stg", "stg_orders"],
+            raw={},
+        ),
+        runtime=empty_node_runtime_metadata(),
+        tasks=[],
+        partition_calendar=calendar,
+        supports_partitions=True,
+    )
+
+    html = (
+        _template_engine()
+        .get_template(partition_inspector.TEMPLATE_NAME)
+        .render(**partition_inspector.build_template_context(inspector))
+    )
+
+    assert "partition-day-no-data" in html
+    assert "partition-day-normal" in html
+    assert "partition-day-low" not in html
+    assert "partition-day-critical" not in html
+    assert "partition-day-high" not in html
 
 
 def test_partition_template_uses_future_days_when_history_is_short() -> None:
@@ -237,15 +304,22 @@ def test_partition_template_uses_future_days_when_history_is_short() -> None:
 
     context = partition_inspector.build_template_context(inspector)
 
-    assert context["month_groups"][0]["months"][0]["days"][0]["color_class"] == "partition-day-low"
+    assert (
+        context["month_groups"][0]["months"][0]["days"][0]["color_class"] == "partition-day-normal"
+    )
 
 
 def test_partition_day_color_thresholds() -> None:
-    assert partition_inspector._partition_day_color_class(None, 10.0) == "partition-day-no-data"
-    assert partition_inspector._partition_day_color_class(2, 10.0) == "partition-day-critical"
-    assert partition_inspector._partition_day_color_class(7, 10.0) == "partition-day-low"
-    assert partition_inspector._partition_day_color_class(10, 10.0) == "partition-day-normal"
-    assert partition_inspector._partition_day_color_class(13, 10.0) == "partition-day-high"
+    assert (
+        partition_inspector._partition_day_color_class(None, 10.0, False) == "partition-day-no-data"
+    )
+    assert (
+        partition_inspector._partition_day_color_class(2, 10.0, False) == "partition-day-critical"
+    )
+    assert partition_inspector._partition_day_color_class(7, 10.0, False) == "partition-day-low"
+    assert partition_inspector._partition_day_color_class(10, 10.0, False) == "partition-day-normal"
+    assert partition_inspector._partition_day_color_class(13, 10.0, False) == "partition-day-high"
+    assert partition_inspector._partition_day_color_class(2, 10.0, True) == "partition-day-normal"
 
 
 def _template_engine() -> JinjaTemplateEngine:
