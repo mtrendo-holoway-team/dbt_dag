@@ -20,8 +20,10 @@ def test_startup_progress_reporter_logs_progress(caplog: LogCaptureFixture) -> N
         reporter.advance("Building graph")
         reporter.finish()
 
-    assert "startup [#######-------------] 1/3 Loading settings" in caplog.text
-    assert "startup [#############-------] 2/3 Building graph" in caplog.text
+    assert "startup [#######-------------] 1/3 starting Loading settings" in caplog.text
+    assert "startup [#######-------------] 1/3 completed Loading settings in" in caplog.text
+    assert "startup [#############-------] 2/3 starting Building graph" in caplog.text
+    assert "startup [#############-------] 2/3 completed Building graph in" in caplog.text
     assert "startup [####################] ready in" in caplog.text
 
 
@@ -73,11 +75,18 @@ def test_build_app_state_reports_startup_steps(
     assert isinstance(state, AppState)
     assert steps == [
         "Resolving dbt project paths",
-        "Resolving active dbt profile",
-        "Preparing warehouse adapter",
-        "Validating warehouse adapter",
+        f"Resolving active dbt profile for project {dbt_project.name}",
+        (
+            "Preparing warehouse adapter for "
+            f"project {dbt_project.name}, profile {runtime_profile.profile_name}, "
+            f"target {runtime_profile.target.name}"
+        ),
+        (
+            "Validating warehouse adapter for "
+            f"profile {runtime_profile.profile_name}, target {runtime_profile.target.name}"
+        ),
         "Initializing local database",
         "Preparing runtime metadata services",
-        "Building graph state",
-        "Preparing background watcher",
+        f"Building graph state for project {dbt_project.name}",
+        f"Preparing background watcher for project {dbt_project.name}",
     ]

@@ -58,22 +58,48 @@ class StartupProgressReporter:
         self._total_steps = total_steps
         self._current_step = 0
         self._started_at = perf_counter()
+        self._step_started_at = self._started_at
+        self._current_message = ""
 
     def advance(self, message: str) -> None:
+        now = perf_counter()
+        if self._current_step > 0:
+            logger.info(
+                "startup %s %d/%d completed %s in %.1fs (%.1fs total)",
+                self._render_bar(),
+                self._current_step,
+                self._total_steps,
+                self._current_message,
+                now - self._step_started_at,
+                now - self._started_at,
+            )
         self._current_step = min(self._current_step + 1, self._total_steps)
+        self._current_message = message
+        self._step_started_at = now
         logger.info(
-            "startup %s %d/%d %s (%.1fs)",
+            "startup %s %d/%d starting %s (%.1fs total)",
             self._render_bar(),
             self._current_step,
             self._total_steps,
             message,
-            perf_counter() - self._started_at,
+            now - self._started_at,
         )
 
     def finish(self) -> None:
+        now = perf_counter()
+        if self._current_step > 0:
+            logger.info(
+                "startup %s %d/%d completed %s in %.1fs (%.1fs total)",
+                self._render_bar(),
+                self._current_step,
+                self._total_steps,
+                self._current_message,
+                now - self._step_started_at,
+                now - self._started_at,
+            )
         logger.info(
             "startup [####################] ready in %.1fs",
-            perf_counter() - self._started_at,
+            now - self._started_at,
         )
 
     def fail(self) -> None:

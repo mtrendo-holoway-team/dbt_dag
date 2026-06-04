@@ -39,11 +39,26 @@ def build_app_state(
 ) -> AppState:
     _report_progress(progress, "Resolving dbt project paths")
     paths = resolve_project_paths(settings, start_dir=start_dir)
-    _report_progress(progress, "Resolving active dbt profile")
+    _report_progress(progress, f"Resolving active dbt profile for project {paths.project_dir.name}")
     runtime_profile = resolve_runtime_profile(paths, settings.dbt_target)
-    _report_progress(progress, "Preparing warehouse adapter")
+    _report_progress(
+        progress,
+        (
+            "Preparing warehouse adapter for "
+            f"project {paths.project_dir.name}, "
+            f"profile {runtime_profile.profile_name}, "
+            f"target {runtime_profile.target.name}"
+        ),
+    )
     warehouse_adapter = create_warehouse_adapter(runtime_profile)
-    _report_progress(progress, "Validating warehouse adapter")
+    _report_progress(
+        progress,
+        (
+            "Validating warehouse adapter for "
+            f"profile {runtime_profile.profile_name}, "
+            f"target {runtime_profile.target.name}"
+        ),
+    )
     warehouse_adapter.validate_connection()
     _report_progress(progress, "Initializing local database")
     engine = create_db_engine(settings.sqlite_path)
@@ -55,9 +70,9 @@ def build_app_state(
         artifact_reader=RunResultsArtifactReader(paths.project_dir),
         warehouse_reader=WarehouseMetadataReader(warehouse_adapter, runtime_profile),
     )
-    _report_progress(progress, "Building graph state")
+    _report_progress(progress, f"Building graph state for project {paths.project_dir.name}")
     graph_store = GraphStateStore(paths.manifest_path, metadata_service)
-    _report_progress(progress, "Preparing background watcher")
+    _report_progress(progress, f"Preparing background watcher for project {paths.project_dir.name}")
     metadata_watcher = MetadataWatcher(graph_store)
     return AppState(
         settings=settings,
