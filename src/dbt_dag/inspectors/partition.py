@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from datetime import date
 from statistics import median
 from typing import Any
 
@@ -43,7 +44,11 @@ def build_template_context(inspector: NodeInspectorContextDTO) -> dict[str, Any]
         "median": _format_median(calendar),
         "status_label": partition_status_label(calendar),
         "status_class": partition_status_class(calendar),
-        "month_groups": _build_month_groups(calendar.months, calendar.median_row_count),
+        "month_groups": _build_month_groups(
+            calendar.months,
+            calendar.median_row_count,
+            current_date=calendar.range_end,
+        ),
     }
 
 
@@ -64,6 +69,7 @@ def _format_last_synced(calendar: ModelPartitionCalendarDTO) -> str:
 def _build_month_groups(
     months: list[PartitionMonthDTO],
     overall_median_row_count: float | None,
+    current_date: date,
 ) -> list[dict[str, Any]]:
     reference_median_by_date = _reference_median_by_date(months)
     use_simple_presence_colors = _use_simple_presence_colors(overall_median_row_count)
@@ -71,7 +77,12 @@ def _build_month_groups(
         {
             "year": months_in_year[0].year,
             "months": [
-                _build_month(month, reference_median_by_date, use_simple_presence_colors)
+                _build_month(
+                    month,
+                    reference_median_by_date,
+                    use_simple_presence_colors,
+                    current_date,
+                )
                 for month in months_in_year
             ],
         }
@@ -83,18 +94,23 @@ def _build_month(
     month: PartitionMonthDTO,
     reference_median_by_date: dict[str, float | None],
     use_simple_presence_colors: bool,
+    current_date: date,
 ) -> dict[str, Any]:
     return {
         "month_label": month.month_label,
         "leading_empty_days": range(month.leading_empty_days),
         "days": [
-            _build_day(day, use_simple_presence_colors)
+            _build_day(day, use_simple_presence_colors, current_date)
             for day in _annotate_reference_medians(month.days, reference_median_by_date)
         ],
     }
 
 
-def _build_day(day_reference: _DayReference, use_simple_presence_colors: bool) -> dict[str, str]:
+def _build_day(
+    day_reference: _DayReference,
+    use_simple_presence_colors: bool,
+    current_date: date,
+) -> dict[str, str]:
     day = day_reference.day
     title = (
         f"{day.date.isoformat()} - {day.row_count} rows"
@@ -107,6 +123,7 @@ def _build_day(day_reference: _DayReference, use_simple_presence_colors: bool) -
             day.row_count,
             day_reference.reference_median,
             use_simple_presence_colors,
+            is_current_day=day.date == current_date,
         ),
     }
 
@@ -157,8 +174,11 @@ def _partition_day_color_class(
     row_count: int | None,
     reference_median: float | None,
     use_simple_presence_colors: bool,
+    is_current_day: bool = False,
 ) -> str:
     if row_count is None:
+        if is_current_day:
+            return ""
         return "partition-day-no-data"
     if use_simple_presence_colors:
         return "partition-day-normal"

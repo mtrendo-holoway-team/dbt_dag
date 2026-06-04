@@ -153,6 +153,62 @@ def test_partition_template_contains_fill_states() -> None:
     assert ">2026<" in html
 
 
+def test_partition_template_hides_empty_current_day_marker() -> None:
+    calendar = ModelPartitionCalendarDTO(
+        model_unique_id="model.demo.stg_orders",
+        range_start=None,
+        range_end=date(2026, 6, 4),
+        median_row_count=10.0,
+        months=[
+            PartitionMonthDTO(
+                year=2026,
+                month_label="Июнь",
+                leading_empty_days=0,
+                days=[
+                    PartitionDayCellDTO(
+                        date=date(2026, 6, 3),
+                        row_count=None,
+                        fill_level=PartitionFillLevel.EMPTY,
+                    ),
+                    PartitionDayCellDTO(
+                        date=date(2026, 6, 4),
+                        row_count=None,
+                        fill_level=PartitionFillLevel.EMPTY,
+                    ),
+                ],
+            )
+        ],
+        is_stale=False,
+        is_refreshing=False,
+        last_synced_at=None,
+        sync_status=PartitionSyncStatus.IDLE,
+        last_error="",
+    )
+    inspector = NodeInspectorContextDTO(
+        selection_token="token123",
+        node=DbtManifestNode(
+            unique_id="model.demo.stg_orders",
+            name="stg_orders",
+            resource_type="model",
+            description="Staged orders",
+            depends_on=[],
+            package_name="demo",
+            path="models/stg/stg_orders.sql",
+            fqn=["demo", "stg", "stg_orders"],
+            raw={},
+        ),
+        runtime=empty_node_runtime_metadata(),
+        tasks=[],
+        partition_calendar=calendar,
+        supports_partitions=True,
+    )
+
+    context = partition_inspector.build_template_context(inspector)
+
+    assert context["month_groups"][0]["months"][0]["days"][0]["color_class"] == "partition-day-no-data"
+    assert context["month_groups"][0]["months"][0]["days"][1]["color_class"] == ""
+
+
 def test_partition_template_uses_green_only_for_small_medians() -> None:
     calendar = ModelPartitionCalendarDTO(
         model_unique_id="model.demo.stg_orders",
@@ -312,6 +368,7 @@ def test_partition_day_color_thresholds() -> None:
     assert (
         partition_inspector._partition_day_color_class(None, 10.0, False) == "partition-day-no-data"
     )
+    assert partition_inspector._partition_day_color_class(None, 10.0, False, is_current_day=True) == ""
     assert (
         partition_inspector._partition_day_color_class(2, 10.0, False) == "partition-day-critical"
     )
