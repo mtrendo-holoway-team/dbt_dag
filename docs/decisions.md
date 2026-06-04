@@ -113,3 +113,11 @@
 - Context: Node styling and inspectors need execution duration and table update metadata that may change after the initial page load.
 - Decision: Keep runtime metadata in a centralized thread-safe graph state store, refresh it in a daemon watcher, and prefer warehouse metadata over local dbt artifacts.
 - Consequences: Graph and inspector endpoints read a consistent snapshot; frontend clients poll a lightweight revision endpoint and reload graph data only when the revision changes.
+
+## ADR-0015 Local Partition Snapshot Cache
+
+- Created: 2026-06-04
+- Status: active
+- Context: Partition row-count calendars need warehouse data from `stg__dbt_run_partition_info`, but querying BigQuery on every inspector repaint would be slower and less stable than serving a local snapshot.
+- Decision: Keep one current partition snapshot per model in SQLite, refresh it in background threads, and treat the local cache as stale when its newest warehouse `inserted_at` is older than the model update time from runtime metadata or `stg__dbt_run_results`.
+- Consequences: BigQuery model inspectors can render immediately from local state, stale calendars trigger background sync, and manual refresh uses the same replacement-based cache flow instead of storing snapshot history.

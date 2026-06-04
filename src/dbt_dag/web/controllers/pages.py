@@ -11,6 +11,7 @@ from litestar.response import Response
 from dbt_dag.web.render import render_node_inspector
 from dbt_dag.web.render import render_node_tasks
 from dbt_dag.web.render import render_page
+from dbt_dag.web.render import render_partition_calendar
 from dbt_dag.web.render import render_project_inspector
 from dbt_dag.web.state import AppState
 
@@ -53,7 +54,27 @@ class PagesController(Controller):
         node = snapshot.manifest.graph_nodes()[node_id]
         runtime = snapshot.runtime_metadata.get(node_id)
         tasks = state.task_repository.list_for_node(node_id)
-        return _html(render_node_inspector(node, runtime, render_node_tasks(node_id, tasks)))
+        partition_html = _render_partition_block(state, node.resource_type, node_id, runtime)
+        return _html(
+            render_node_inspector(
+                node,
+                runtime,
+                render_node_tasks(node_id, tasks),
+                partition_html=partition_html,
+            )
+        )
+
+    @get("/inspector/node/{node_id:str}/partitions")
+    async def node_partition_inspector(
+        self,
+        request: Request[Any, Any, Any],
+        node_id: str,
+    ) -> Response[str]:
+        state = _state(request)
+        snapshot = state.graph_store.snapshot()
+        runtime = snapshot.runtime_metadata.get(node_id)
+        node = snapshot.manifest.graph_nodes()[node_id]
+        return _html(_render_partition_block(state, node.resource_type, node_id, runtime))
 
     @post("/actions/node/{node_id:str}/build", status_code=200)
     async def build_node(self, request: Request[Any, Any, Any], node_id: str) -> Response[str]:
@@ -62,6 +83,21 @@ class PagesController(Controller):
             return _html(render_node_tasks(node_id, []))
         state.task_runner.start_build(node_id)
         return _html(render_node_tasks(node_id, state.task_repository.list_for_node(node_id)))
+
+    @post("/actions/node/{node_id:str}/refresh-partitions", status_code=200)
+    async def refresh_node_partitions(
+        self,
+        request: Request[Any, Any, Any],
+        node_id: str,
+    ) -> Response[str]:
+        state = _state(request)
+        snapshot = state.graph_store.snapshot()
+        node = snapshot.manifest.graph_nodes().get(node_id)
+        if node is None:
+            return _html("")
+        state.partition_runner.start_refresh(node_id)
+        runtime = snapshot.runtime_metadata.get(node_id)
+        return _html(_render_partition_block(state, node.resource_type, node_id, runtime))
 
     @get("/tasks/node/{node_id:str}")
     async def node_tasks(self, request: Request[Any, Any, Any], node_id: str) -> Response[str]:
@@ -133,3 +169,24 @@ def _graph_payload(graph: Any) -> dict[str, Any]:
             "tests_count": graph.project.tests_count,
         },
     }
+
+
+def _render_partition_block(
+    state: AppState,
+    resource_type: str,
+    node_id: str,
+    runtime: Any,
+) -> str:
+    if resource_type != "model" or not state.partition_service.supports_partitions():
+        return ""
+    calendar = state.partition_service.build_calendar(
+        node_id,
+        runtime.last_updated_at if runtime is not None else None,
+    )
+    if calendar.is_stale and not calendar.is_refreshing:
+        state.partition_runner.start_refresh(node_id)
+        calendar = state.partition_service.build_calendar(
+            node_id,
+            runtime.last_updated_at if runtime is not None else None,
+        )
+    return render_partition_calendar(node_id, calendar)

@@ -53,6 +53,9 @@ def test_build_app_state_reports_startup_steps(
     )
     adapter = Mock()
     task_repository = Mock()
+    partition_repository = Mock()
+    partition_service = Mock()
+    partition_runner = Mock()
     graph_store = Mock()
     watcher = Mock()
     task_runner = Mock()
@@ -66,6 +69,18 @@ def test_build_app_state_reports_startup_steps(
     monkeypatch.setattr("dbt_dag.web.state.init_db", Mock())
     monkeypatch.setattr("dbt_dag.web.state.create_session_factory", Mock(return_value=Mock()))
     monkeypatch.setattr("dbt_dag.web.state.NodeTaskRepository", Mock(return_value=task_repository))
+    monkeypatch.setattr(
+        "dbt_dag.web.state.ModelPartitionRepository",
+        Mock(return_value=partition_repository),
+    )
+    monkeypatch.setattr(
+        "dbt_dag.web.state.ModelPartitionService",
+        Mock(return_value=partition_service),
+    )
+    monkeypatch.setattr(
+        "dbt_dag.web.state.ModelPartitionSyncRunner",
+        Mock(return_value=partition_runner),
+    )
     monkeypatch.setattr("dbt_dag.web.state.GraphStateStore", Mock(return_value=graph_store))
     monkeypatch.setattr("dbt_dag.web.state.MetadataWatcher", Mock(return_value=watcher))
     monkeypatch.setattr("dbt_dag.web.state.DbtTaskRunner", Mock(return_value=task_runner))

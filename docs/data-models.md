@@ -9,6 +9,8 @@
 - `GraphPayload`: graph nodes, including package name, runtime metadata, graph edges, columns, and project summary.
 - `GraphStateSnapshot`: thread-safe in-memory graph, manifest, runtime metadata, revision, and refresh timestamp.
 - `NodeTaskDTO`: persisted dbt action task state for a node.
+- `PartitionDayCellDTO`: one calendar day for partition coverage with `empty`, `half`, or `full` fill level.
+- `ModelPartitionCalendarDTO`: per-model partition calendar state, median row count, sync status, stale flag, and month groups.
 
 ## Database Tables
 
@@ -32,3 +34,27 @@ Stores the last ingested manifest source state.
 - `manifest_path`: resolved manifest path.
 - `checksum`: manifest checksum.
 - `last_ingested_at`: MSK-normalized timestamp.
+
+### `model_partition_snapshots`
+
+Stores the current local cache of partition row counts for one model.
+
+- `id`: integer primary key.
+- `model_unique_id`: manifest unique id for the model.
+- `partition_date`: partition date displayed in the inspector calendar.
+- `partition_key`: original partition identifier from `stg__dbt_run_partition_info`.
+- `row_count`: cached row count for the partition snapshot row.
+- `source_inserted_at`: warehouse `inserted_at` for the source snapshot row.
+- `synced_at`: MSK-normalized timestamp when the local cache was replaced.
+
+### `model_partition_sync_state`
+
+Stores sync status for the current partition cache of one model.
+
+- `id`: integer primary key.
+- `model_unique_id`: manifest unique id for the model.
+- `last_source_inserted_at`: newest warehouse `inserted_at` included in the local cache.
+- `last_synced_at`: last successful local sync timestamp in MSK.
+- `last_checked_at`: last sync attempt timestamp in MSK.
+- `sync_status`: `idle`, `running`, `succeeded`, or `failed`.
+- `last_error`: last sync error message, if any.

@@ -1,5 +1,7 @@
+from datetime import date
 from datetime import datetime
 
+from sqlalchemy import Date
 from sqlalchemy import DateTime
 from sqlalchemy import Integer
 from sqlalchemy import String
@@ -34,3 +36,32 @@ class ManifestSourceStateRecord(Base):
     manifest_path: Mapped[str] = mapped_column(Text)
     checksum: Mapped[str] = mapped_column(String(128))
     last_ingested_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class ModelPartitionSnapshotRecord(Base):
+    __tablename__ = "model_partition_snapshots"
+
+    record_id: Mapped[int] = mapped_column("id", Integer, primary_key=True)
+    model_unique_id: Mapped[str] = mapped_column(String(512), index=True)
+    partition_date: Mapped[date] = mapped_column(Date, index=True)
+    partition_key: Mapped[str] = mapped_column(String(255))
+    row_count: Mapped[int] = mapped_column(Integer)
+    source_inserted_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    synced_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class ModelPartitionSyncStateRecord(Base):
+    __tablename__ = "model_partition_sync_state"
+
+    record_id: Mapped[int] = mapped_column("id", Integer, primary_key=True)
+    model_unique_id: Mapped[str] = mapped_column(String(512), index=True, unique=True)
+    last_source_inserted_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+    last_synced_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    sync_status: Mapped[str] = mapped_column(String(32))
+    last_error: Mapped[str] = mapped_column(Text, default="")

@@ -8,6 +8,11 @@ from dbt_dag.manifest.models import DbtManifestNode
 from dbt_dag.metadata.models import empty_node_runtime_metadata
 from dbt_dag.metadata.models import NodeRuntimeMetadata
 from dbt_dag.metadata.models import RuntimeDataSource
+from dbt_dag.partitions.models import ModelPartitionCalendarDTO
+from dbt_dag.partitions.models import PartitionDayCellDTO
+from dbt_dag.partitions.models import PartitionFillLevel
+from dbt_dag.partitions.models import PartitionMonthDTO
+from dbt_dag.partitions.models import PartitionSyncStatus
 from dbt_dag.tasks.models import NodeTaskDTO
 
 STATIC_ROOT = Path(__file__).parent / "static"
@@ -114,6 +119,7 @@ def render_node_inspector(
     node: DbtManifestNode,
     runtime: NodeRuntimeMetadata | None,
     tasks_html: str,
+    partition_html: str = "",
 ) -> str:
     runtime = runtime or empty_node_runtime_metadata()
     return f"""
@@ -128,6 +134,7 @@ def render_node_inspector(
     <p class="text-sm leading-6 text-zinc-300">{escape(node.description or "No description.")}</p>
   </section>
   {_render_runtime_metadata(runtime)}
+  {partition_html}
   <section class="space-y-3">
     <h2 class="text-sm font-medium">Actions</h2>
     <button class="btn" hx-post="/actions/node/{escape(node.unique_id)}/build" hx-target="#node-tasks" hx-swap="outerHTML">Run build</button>
@@ -181,6 +188,144 @@ def _source_label(source: RuntimeDataSource) -> str:
     if source == RuntimeDataSource.RUN_RESULTS:
         return "run_results"
     return "none"
+
+
+def render_partition_calendar(
+    node_id: str,
+    calendar: ModelPartitionCalendarDTO,
+) -> str:
+    status_label = _partition_status_label(calendar)
+    last_synced = (
+        calendar.last_synced_at.strftime("%Y-%m-%d %H:%M:%S MSK")
+        if calendar.last_synced_at is not None
+        else "No sync yet"
+    )
+    median = (
+        str(int(calendar.median_row_count))
+        if calendar.median_row_count is not None and calendar.median_row_count.is_integer()
+        else (
+            f"{calendar.median_row_count:.1f}"
+            if calendar.median_row_count is not None
+            else "No data"
+        )
+    )
+    body = _render_partition_calendar_body(calendar)
+    error_html = (
+        f'<p class="text-xs text-rose-400">{escape(calendar.last_error)}</p>'
+        if calendar.last_error
+        else ""
+    )
+    return f"""
+<section id="partition-calendar" class="space-y-4 rounded border border-zinc-800 p-4" hx-get="/inspector/node/{escape(node_id)}/partitions" hx-trigger="every 3s" hx-swap="outerHTML">
+  <div class="flex items-start justify-between gap-3">
+    <div class="space-y-1">
+      <h2 class="text-sm font-medium">Partition data</h2>
+      <p class="text-xs text-zinc-500">Last sync: {escape(last_synced)}</p>
+      <p class="text-xs text-zinc-500">Median row count: {escape(median)}</p>
+      <p class="text-xs {escape(_partition_status_class(calendar.sync_status))}">{escape(status_label)}</p>
+      {error_html}
+    </div>
+    <button class="btn" hx-post="/actions/node/{escape(node_id)}/refresh-partitions" hx-target="#partition-calendar" hx-swap="outerHTML">Refresh partition data</button>
+  </div>
+  {body}
+</section>
+"""
+
+
+def _render_partition_calendar_body(calendar: ModelPartitionCalendarDTO) -> str:
+    if not calendar.months:
+        return '<p class="text-sm text-zinc-500">No partition snapshot in local cache yet.</p>'
+    year_sections = "\n".join(
+        _render_partition_year_section(months) for months in _group_months_by_year(calendar.months)
+    )
+    return f'<div class="partition-years">{year_sections}</div>'
+
+
+def _group_months_by_year(months: list[PartitionMonthDTO]) -> list[list[PartitionMonthDTO]]:
+    groups: list[list[PartitionMonthDTO]] = []
+    current_group: list[PartitionMonthDTO] = []
+    current_year: int | None = None
+    for month in months:
+        if current_year != month.year:
+            if current_group:
+                groups.append(current_group)
+            current_group = [month]
+            current_year = month.year
+            continue
+        current_group.append(month)
+    if current_group:
+        groups.append(current_group)
+    return groups
+
+
+def _render_partition_year_section(months: list[PartitionMonthDTO]) -> str:
+    year = months[0].year
+    month_html = "\n".join(_render_partition_month(month) for month in months)
+    return f"""
+<section class="space-y-5">
+  <div class="partition-year-header">
+    <span class="partition-year-label">{year}</span>
+    <div class="partition-year-line"></div>
+  </div>
+  <div class="partition-month-grid">
+    {month_html}
+  </div>
+</section>
+"""
+
+
+def _render_partition_month(month: PartitionMonthDTO) -> str:
+    leading = "\n".join(
+        '<div class="partition-day-spacer"></div>' for _ in range(month.leading_empty_days)
+    )
+    days = "\n".join(_render_partition_day(day) for day in month.days)
+    return f"""
+<section class="partition-month">
+  <h3 class="partition-month-title">{escape(month.month_label)}</h3>
+  <div class="partition-days">
+    {leading}
+    {days}
+  </div>
+</section>
+"""
+
+
+def _render_partition_day(day: PartitionDayCellDTO) -> str:
+    title = (
+        f"{day.date.isoformat()} - {day.row_count} rows"
+        if day.row_count is not None
+        else f"{day.date.isoformat()} - No data"
+    )
+    return (
+        f'<div class="partition-day {_partition_fill_class(day.fill_level)}" '
+        f'title="{escape(title, quote=True)}"></div>'
+    )
+
+
+def _partition_fill_class(fill_level: PartitionFillLevel) -> str:
+    if fill_level == PartitionFillLevel.FULL:
+        return "partition-day-full"
+    if fill_level == PartitionFillLevel.HALF:
+        return "partition-day-half"
+    return "partition-day-empty"
+
+
+def _partition_status_label(calendar: ModelPartitionCalendarDTO) -> str:
+    if calendar.sync_status == PartitionSyncStatus.RUNNING:
+        return "Refreshing in background"
+    if calendar.sync_status == PartitionSyncStatus.FAILED:
+        return "Last refresh failed"
+    if calendar.is_stale:
+        return "Snapshot is stale"
+    return "Snapshot is fresh"
+
+
+def _partition_status_class(status: PartitionSyncStatus) -> str:
+    if status == PartitionSyncStatus.FAILED:
+        return "text-rose-400"
+    if status == PartitionSyncStatus.RUNNING:
+        return "text-cyan-400"
+    return "text-emerald-400"
 
 
 def render_tasks(tasks: list[NodeTaskDTO]) -> str:

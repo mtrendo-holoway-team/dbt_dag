@@ -2,4 +2,104 @@
   .btn {
     @apply rounded border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 hover:border-cyan-500 hover:text-cyan-200;
   }
+
+  .partition-years {
+    display: flex;
+    flex-direction: column;
+    gap: 2rem;
+  }
+
+  .partition-year {
+    display: flex;
+    flex-direction: column;
+    gap: 1.25rem;
+  }
+
+  .partition-year-header {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+  }
+
+  .partition-year-label {
+    color: var(--color-zinc-500);
+    font-size: 0.875rem;
+    font-weight: 500;
+    letter-spacing: 0.3em;
+  }
+
+  .partition-year-line {
+    flex: 1 1 auto;
+    height: 1px;
+    background: var(--color-zinc-800);
+  }
+
+  .partition-month-grid {
+    display: grid;
+    grid-template-columns: repeat(1, minmax(0, 1fr));
+    gap: 2.5rem 2rem;
+  }
+
+  .partition-month {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+  }
+
+  .partition-month-title {
+    color: var(--color-zinc-100);
+    font-size: 3rem;
+    font-weight: 300;
+    line-height: 1;
+  }
+
+  .partition-days {
+    display: grid;
+    grid-template-columns: repeat(7, 1.75rem);
+    grid-auto-rows: 1.75rem;
+    gap: 0.75rem;
+  }
+
+  .partition-day-spacer {
+    width: 1.75rem;
+    height: 1.75rem;
+  }
+
+  .partition-day {
+    box-sizing: border-box;
+    width: 1.75rem;
+    min-width: 1.75rem;
+    max-width: 1.75rem;
+    height: 1.75rem;
+    min-height: 1.75rem;
+    max-height: 1.75rem;
+    justify-self: start;
+    align-self: start;
+    border: 2px solid #16a34a;
+    border-radius: 9999px;
+  }
+
+  .partition-day-empty {
+    background: transparent;
+  }
+
+  .partition-day-half {
+    background: linear-gradient(90deg, #16a34a 50%, transparent 50%);
+  }
+
+  .partition-day-full {
+    background: #16a34a;
+  }
+
+  @media (min-width: 768px) {
+    .partition-month-grid {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+  }
+
+  @media (min-width: 1280px) {
+    .partition-month-grid {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+  }
 }

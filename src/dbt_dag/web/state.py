@@ -13,6 +13,10 @@ from dbt_dag.metadata.artifacts import RunResultsArtifactReader
 from dbt_dag.metadata.service import RuntimeMetadataService
 from dbt_dag.metadata.warehouse import WarehouseMetadataReader
 from dbt_dag.metadata.watcher import MetadataWatcher
+from dbt_dag.partitions.repository import ModelPartitionRepository
+from dbt_dag.partitions.runner import ModelPartitionSyncRunner
+from dbt_dag.partitions.service import ModelPartitionService
+from dbt_dag.partitions.warehouse import BigQueryPartitionWarehouseReader
 from dbt_dag.settings import Settings
 from dbt_dag.tasks.repository import NodeTaskRepository
 from dbt_dag.tasks.runner import DbtTaskRunner
@@ -27,6 +31,9 @@ class AppState:
     task_runner: DbtTaskRunner
     metadata_watcher: MetadataWatcher
     warehouse_adapter: WarehouseAdapterProtocol
+    partition_repository: ModelPartitionRepository
+    partition_service: ModelPartitionService
+    partition_runner: ModelPartitionSyncRunner
 
 
 StartupProgressCallback = Callable[[str], None]
@@ -65,11 +72,16 @@ def build_app_state(
     init_db(engine)
     session_factory = create_session_factory(engine)
     task_repository = NodeTaskRepository(session_factory)
+    partition_repository = ModelPartitionRepository(session_factory)
     _report_progress(progress, "Preparing runtime metadata services")
     metadata_service = RuntimeMetadataService(
         artifact_reader=RunResultsArtifactReader(paths.project_dir),
         warehouse_reader=WarehouseMetadataReader(warehouse_adapter, runtime_profile),
     )
+    partition_warehouse_reader = BigQueryPartitionWarehouseReader(
+        warehouse_adapter, runtime_profile
+    )
+    partition_service = ModelPartitionService(partition_repository, partition_warehouse_reader)
     _report_progress(progress, f"Building graph state for project {paths.project_dir.name}")
     graph_store = GraphStateStore(paths.manifest_path, metadata_service)
     _report_progress(progress, f"Preparing background watcher for project {paths.project_dir.name}")
@@ -85,6 +97,12 @@ def build_app_state(
         ),
         metadata_watcher=metadata_watcher,
         warehouse_adapter=warehouse_adapter,
+        partition_repository=partition_repository,
+        partition_service=partition_service,
+        partition_runner=ModelPartitionSyncRunner(
+            partition_repository,
+            partition_warehouse_reader,
+        ),
     )
 
 

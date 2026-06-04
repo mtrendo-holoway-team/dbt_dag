@@ -1,3 +1,4 @@
+from datetime import date
 from pathlib import Path
 import pytest
 from typing import cast
@@ -14,6 +15,9 @@ from dbt_dag.metadata.artifacts import RunResultsArtifactReader
 from dbt_dag.metadata.service import RuntimeMetadataService
 from dbt_dag.metadata.warehouse import WarehouseMetadataReader
 from dbt_dag.metadata.watcher import MetadataWatcher
+from dbt_dag.partitions.models import ModelPartitionCalendarDTO
+from dbt_dag.partitions.models import PartitionMonthDTO
+from dbt_dag.partitions.models import PartitionSyncStatus
 from dbt_dag.settings import Settings
 from dbt_dag.tasks.repository import NodeTaskRepository
 from dbt_dag.web.controllers import pages
@@ -46,6 +50,7 @@ def test_node_inspector_returns_name_and_description(dbt_project: Path, tmp_path
     assert "stg_orders" in response.text
     assert "Staged orders" in response.text
     assert "Last update" in response.text
+    assert "Partition data" in response.text
 
 
 def test_metadata_revision_endpoint_returns_revision(dbt_project: Path, tmp_path: Path) -> None:
@@ -66,6 +71,29 @@ def test_build_action_creates_task(dbt_project: Path, tmp_path: Path) -> None:
     assert "dbt build --select model.demo.stg_orders" in response.text
 
 
+def test_partition_partial_endpoint_returns_calendar(dbt_project: Path, tmp_path: Path) -> None:
+    client = _client(dbt_project, tmp_path)
+
+    response = client.get("/inspector/node/model.demo.stg_orders/partitions")
+
+    assert response.status_code == 200
+    assert "Partition data" in response.text
+    assert "Refresh partition data" in response.text
+
+
+def test_refresh_partition_action_starts_background_sync(
+    dbt_project: Path,
+    tmp_path: Path,
+) -> None:
+    partition_runner = Mock()
+    client = _client(dbt_project, tmp_path, partition_runner=partition_runner)
+
+    response = client.post("/actions/node/model.demo.stg_orders/refresh-partitions")
+
+    assert response.status_code == 200
+    partition_runner.start_refresh.assert_called_with("model.demo.stg_orders")
+
+
 def test_static_file_serves_built_assets(
     dbt_project: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -84,7 +112,11 @@ def test_static_file_serves_built_assets(
     assert "function" in response.text
 
 
-def _client(dbt_project: Path, tmp_path: Path) -> TestClient[Litestar]:
+def _client(
+    dbt_project: Path,
+    tmp_path: Path,
+    partition_runner: Mock | None = None,
+) -> TestClient[Litestar]:
     engine = create_db_engine(tmp_path / "app.sqlite")
     init_db(engine)
     repository = NodeTaskRepository(create_session_factory(engine))
@@ -97,6 +129,7 @@ def _client(dbt_project: Path, tmp_path: Path) -> TestClient[Litestar]:
         _empty_metadata_service(),
     )
     metadata_watcher = MetadataWatcher(graph_store)
+    partition_runner = partition_runner or Mock()
     state = AppState(
         settings=Settings(
             app_host="127.0.0.1",
@@ -111,6 +144,9 @@ def _client(dbt_project: Path, tmp_path: Path) -> TestClient[Litestar]:
         task_runner=task_runner,
         metadata_watcher=metadata_watcher,
         warehouse_adapter=Mock(),
+        partition_repository=Mock(),
+        partition_service=_partition_service(),
+        partition_runner=partition_runner,
     )
     return TestClient(Litestar(route_handlers=[PagesController], state=State({"app_state": state})))
 
@@ -125,3 +161,21 @@ def _empty_metadata_service() -> RuntimeMetadataService:
         cast(RunResultsArtifactReader, artifact_reader),
         cast(WarehouseMetadataReader, warehouse_reader),
     )
+
+
+def _partition_service() -> Mock:
+    service = Mock()
+    service.supports_partitions.return_value = True
+    service.build_calendar.return_value = ModelPartitionCalendarDTO(
+        model_unique_id="model.demo.stg_orders",
+        range_start=None,
+        range_end=date(2026, 6, 4),
+        median_row_count=None,
+        months=[PartitionMonthDTO(year=2026, month_label="Июнь", leading_empty_days=0, days=[])],
+        is_stale=False,
+        is_refreshing=False,
+        last_synced_at=None,
+        sync_status=PartitionSyncStatus.IDLE,
+        last_error="",
+    )
+    return service
