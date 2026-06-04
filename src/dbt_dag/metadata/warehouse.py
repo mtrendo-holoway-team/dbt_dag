@@ -120,6 +120,8 @@ class _RelationGroup:
 def _relations_by_node(manifest: DbtManifest) -> dict[str, tuple[str, str, str]]:
     relations = {}
     for node in manifest.graph_nodes().values():
+        if not _belongs_to_current_project(node, manifest.project_name):
+            continue
         relation = _relation_for_node(node)
         if relation is not None:
             relations[node.unique_id] = relation
@@ -137,6 +139,12 @@ def _relation_for_node(node: DbtManifestNode) -> tuple[str, str, str] | None:
     if not database or not schema or not identifier:
         return None
     return database, schema, identifier
+
+
+def _belongs_to_current_project(node: DbtManifestNode, project_name: str) -> bool:
+    if not project_name:
+        return True
+    return node.package_name == project_name
 
 
 def _group_relations(

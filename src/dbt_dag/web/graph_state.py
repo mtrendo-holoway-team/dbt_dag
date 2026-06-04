@@ -26,12 +26,16 @@ class GraphStateStore:
         self,
         manifest_path: Path,
         metadata_service: RuntimeMetadataService,
+        include_warehouse_on_init: bool = True,
     ) -> None:
         self._manifest_path = manifest_path
         self._metadata_service = metadata_service
         self._lock = threading.Lock()
         manifest = load_manifest(manifest_path)
-        runtime_metadata = metadata_service.load(manifest)
+        runtime_metadata = metadata_service.load(
+            manifest,
+            include_warehouse=include_warehouse_on_init,
+        )
         self._snapshot = GraphStateSnapshot(
             manifest=manifest,
             graph=build_graph(manifest, runtime_metadata),

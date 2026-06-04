@@ -2,9 +2,11 @@ from datetime import datetime
 import json
 from pathlib import Path
 import pytest
+import threading
 from typing import cast
 
 from dbt_dag.manifest.models import DbtManifest
+from dbt_dag.manifest.models import DbtManifestNode
 from dbt_dag.manifest.parser import load_manifest
 from dbt_dag.metadata import service
 from dbt_dag.metadata.artifacts import RunResultsArtifactReader
@@ -12,8 +14,11 @@ from dbt_dag.metadata.models import PartialRuntimeMetadata
 from dbt_dag.metadata.models import RuntimeDataSource
 from dbt_dag.metadata.models import RuntimeFreshness
 from dbt_dag.metadata.service import RuntimeMetadataService
+from dbt_dag.metadata.warehouse import _relations_by_node
 from dbt_dag.metadata.warehouse import WarehouseMetadataReader
+from dbt_dag.metadata.watcher import MetadataWatcher
 from dbt_dag.shared.time import MSK
+from dbt_dag.web.graph_state import GraphStateStore
 
 
 def test_run_results_reader_parses_execution_time_and_execute_completion(
@@ -115,6 +120,80 @@ def test_runtime_service_decorates_freshness_and_logarithmic_width(
     assert metadata["source.demo.raw.orders"].freshness == RuntimeFreshness.UNKNOWN
 
 
+def test_graph_state_store_skips_warehouse_load_on_init_when_disabled(
+    dbt_project: Path,
+) -> None:
+    manifest_path = dbt_project / "target" / "manifest.json"
+    metadata_service = _MetadataServiceSpy()
+
+    GraphStateStore(
+        manifest_path,
+        cast(RuntimeMetadataService, metadata_service),
+        include_warehouse_on_init=False,
+    )
+
+    assert metadata_service.calls == [False]
+
+
+def test_warehouse_relations_include_only_current_project_nodes() -> None:
+    manifest = DbtManifest(
+        project_name="demo",
+        nodes={
+            "model.demo.orders": _manifest_node(
+                unique_id="model.demo.orders",
+                resource_type="model",
+                package_name="demo",
+                database="demo_project",
+                schema="analytics",
+                identifier="orders",
+            ),
+            "model.package.other_orders": _manifest_node(
+                unique_id="model.package.other_orders",
+                resource_type="model",
+                package_name="package",
+                database="foreign_project",
+                schema="system",
+                identifier="other_orders",
+            ),
+        },
+        sources={
+            "source.package.system.tables": _manifest_node(
+                unique_id="source.package.system.tables",
+                resource_type="source",
+                package_name="package",
+                database="foreign_project",
+                schema="system",
+                identifier="tables",
+            )
+        },
+        exposures={},
+    )
+
+    relations = _relations_by_node(manifest)
+
+    assert relations == {
+        "model.demo.orders": ("demo_project", "analytics", "orders"),
+    }
+
+
+def test_metadata_watcher_stop_does_not_block_on_running_thread(
+    dbt_project: Path,
+) -> None:
+    graph_store = GraphStateStore(
+        dbt_project / "target" / "manifest.json",
+        _empty_metadata_service(),
+    )
+    watcher = MetadataWatcher(graph_store, stop_join_timeout_seconds=0)
+    blocker = threading.Event()
+    watcher._thread = threading.Thread(target=blocker.wait, daemon=True)
+    watcher._thread.start()
+
+    watcher.stop()
+
+    assert watcher._thread.is_alive()
+    blocker.set()
+
+
 class _FakeArtifactReader:
     def __init__(self, metadata: dict[str, PartialRuntimeMetadata]) -> None:
         self._metadata = metadata
@@ -132,6 +211,31 @@ class _FakeWarehouseReader:
 
     def read(self, manifest: DbtManifest) -> dict[str, PartialRuntimeMetadata]:
         return self._metadata
+
+
+class _MetadataServiceSpy:
+    def __init__(self) -> None:
+        self.calls: list[bool] = []
+
+    def load(
+        self,
+        manifest: DbtManifest,
+        include_warehouse: bool = True,
+    ) -> dict[str, PartialRuntimeMetadata]:
+        self.calls.append(include_warehouse)
+        return {}
+
+    def artifact_fingerprint(self) -> str:
+        return "fake"
+
+
+def _empty_metadata_service() -> RuntimeMetadataService:
+    artifact_reader = _FakeArtifactReader({})
+    warehouse_reader = _FakeWarehouseReader({})
+    return RuntimeMetadataService(
+        cast(RunResultsArtifactReader, artifact_reader),
+        cast(WarehouseMetadataReader, warehouse_reader),
+    )
 
 
 def _write_run_results(
@@ -158,4 +262,29 @@ def _write_run_results(
     (dbt_project / "target" / "run_results.json").write_text(
         json.dumps(run_results),
         encoding="utf-8",
+    )
+
+
+def _manifest_node(
+    unique_id: str,
+    resource_type: str,
+    package_name: str,
+    database: str,
+    schema: str,
+    identifier: str,
+) -> DbtManifestNode:
+    return DbtManifestNode(
+        unique_id=unique_id,
+        name=identifier,
+        resource_type=resource_type,
+        description="",
+        depends_on=[],
+        package_name=package_name,
+        path="",
+        fqn=[],
+        raw={
+            "database": database,
+            "schema": schema,
+            "identifier": identifier,
+        },
     )

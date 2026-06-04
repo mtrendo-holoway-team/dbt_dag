@@ -48,6 +48,7 @@ def profiles_dir(tmp_path: Path) -> Path:
 
 def _manifest_json() -> str:
     manifest: dict[str, Any] = {
+        "metadata": {"project_name": "demo"},
         "nodes": {
             "model.demo.stg_orders": {
                 "unique_id": "model.demo.stg_orders",

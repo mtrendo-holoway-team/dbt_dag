@@ -21,10 +21,12 @@ class MetadataWatcher:
         graph_store: GraphStateStore,
         artifact_poll_seconds: float = 5,
         warehouse_poll_seconds: float = 60,
+        stop_join_timeout_seconds: float = 0.1,
     ) -> None:
         self._graph_store = graph_store
         self._artifact_poll_seconds = artifact_poll_seconds
         self._warehouse_poll_seconds = warehouse_poll_seconds
+        self._stop_join_timeout_seconds = stop_join_timeout_seconds
         self._stop_event = threading.Event()
         self._refresh_event = threading.Event()
         self._thread: threading.Thread | None = None
@@ -43,7 +45,9 @@ class MetadataWatcher:
         self._stop_event.set()
         self._refresh_event.set()
         if self._thread is not None:
-            self._thread.join(timeout=5)
+            self._thread.join(timeout=self._stop_join_timeout_seconds)
+            if self._thread.is_alive():
+                logger.warning("metadata watcher is still running during shutdown")
 
     def trigger_refresh(self) -> None:
         self._refresh_event.set()
@@ -52,7 +56,7 @@ class MetadataWatcher:
         state = _WatcherState(
             artifact_fingerprint=self._graph_store.artifact_fingerprint(),
             manifest_fingerprint=self._graph_store.manifest_fingerprint(),
-            next_warehouse_refresh=time.monotonic() + self._warehouse_poll_seconds,
+            next_warehouse_refresh=time.monotonic(),
         )
         while not self._stop_event.is_set():
             state = self._poll_once(state)

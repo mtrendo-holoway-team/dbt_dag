@@ -83,7 +83,11 @@ def build_app_state(
     )
     partition_service = ModelPartitionService(partition_repository, partition_warehouse_reader)
     _report_progress(progress, f"Building graph state for project {paths.project_dir.name}")
-    graph_store = GraphStateStore(paths.manifest_path, metadata_service)
+    graph_store = GraphStateStore(
+        paths.manifest_path,
+        metadata_service,
+        include_warehouse_on_init=False,
+    )
     _report_progress(progress, f"Preparing background watcher for project {paths.project_dir.name}")
     metadata_watcher = MetadataWatcher(graph_store)
     return AppState(

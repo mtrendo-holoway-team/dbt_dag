@@ -17,6 +17,7 @@ class DbtManifestNode:
 
 @dataclass(frozen=True)
 class DbtManifest:
+    project_name: str
     nodes: dict[str, DbtManifestNode]
     sources: dict[str, DbtManifestNode]
     exposures: dict[str, DbtManifestNode]

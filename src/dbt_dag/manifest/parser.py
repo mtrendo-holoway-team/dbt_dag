@@ -57,8 +57,17 @@ def load_manifest(path: Path) -> DbtManifest:
         raw = json.load(file)
     if not isinstance(raw, dict):
         raise ValueError("manifest.json must contain an object")
+    metadata = raw.get("metadata")
     return DbtManifest(
+        project_name=_parse_project_name(metadata),
         nodes=_parse_node_mapping(raw.get("nodes")),
         sources=_parse_node_mapping(raw.get("sources")),
         exposures=_parse_node_mapping(raw.get("exposures")),
     )
+
+
+def _parse_project_name(metadata: Any) -> str:
+    if not isinstance(metadata, dict):
+        return ""
+    project_name = metadata.get("project_name")
+    return project_name if isinstance(project_name, str) else ""
