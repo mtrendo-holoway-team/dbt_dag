@@ -205,7 +205,9 @@ def test_partition_template_hides_empty_current_day_marker() -> None:
 
     context = partition_inspector.build_template_context(inspector)
 
-    assert context["month_groups"][0]["months"][0]["days"][0]["color_class"] == "partition-day-no-data"
+    assert (
+        context["month_groups"][0]["months"][0]["days"][0]["color_class"] == "partition-day-no-data"
+    )
     assert context["month_groups"][0]["months"][0]["days"][1]["color_class"] == ""
 
 
@@ -368,7 +370,9 @@ def test_partition_day_color_thresholds() -> None:
     assert (
         partition_inspector._partition_day_color_class(None, 10.0, False) == "partition-day-no-data"
     )
-    assert partition_inspector._partition_day_color_class(None, 10.0, False, is_current_day=True) == ""
+    assert (
+        partition_inspector._partition_day_color_class(None, 10.0, False, is_current_day=True) == ""
+    )
     assert (
         partition_inspector._partition_day_color_class(2, 10.0, False) == "partition-day-critical"
     )
