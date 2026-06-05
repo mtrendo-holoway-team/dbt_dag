@@ -23,12 +23,9 @@ def render_page() -> str:
   {_render_asset_tags()}
 </head>
 <body class="h-screen overflow-hidden bg-zinc-950 text-zinc-100">
-  <main class="grid h-screen grid-cols-[1fr_360px]">
+  <main class="grid h-screen grid-cols-[3fr_1fr]">
     <section class="relative min-w-0 border-r border-zinc-800">
-      <div class="absolute left-4 right-4 top-4 z-10 flex flex-wrap items-center gap-2">
-        <button class="btn" data-filter="upstream">Upstream</button>
-        <button class="btn" data-filter="downstream">Downstream</button>
-        <button class="btn" data-filter="reset">Reset</button>
+      <div class="absolute left-4 right-4 bottom-4 z-10 flex flex-wrap items-center gap-2">
         <div id="package-filters" class="flex min-w-0 flex-wrap items-center gap-2 text-xs text-zinc-300"></div>
       </div>
       <div
@@ -52,7 +49,7 @@ def render_page() -> str:
       </div>
       <div id="graph-root" class="h-full w-full overflow-hidden"></div>
     </section>
-    <aside id="inspector" class="overflow-auto bg-zinc-900 p-5" hx-get="/inspector/project" hx-trigger="load">
+    <aside id="inspector" class="overflow-auto bg-zinc-900 py-5" hx-get="/inspector/project" hx-trigger="load">
     </aside>
   </main>
 </body>

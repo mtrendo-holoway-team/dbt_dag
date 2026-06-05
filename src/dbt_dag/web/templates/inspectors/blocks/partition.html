@@ -1,67 +1,52 @@
-<section
-  id="{{ block_id }}"
-  class="space-y-4 rounded-lg border border-zinc-800 bg-zinc-950/40 p-4"
-  data-inspector-refresh="metadata"
-  {% if inspector.supports_partitions %}
-  hx-get="/inspector/node/{{ inspector.node.unique_id | urlencode }}/partition?selection_token={{ inspector.selection_token }}"
-  hx-swap="outerHTML"
-  {% endif %}
->
-  <div class="flex items-start justify-between gap-3">
+<section id="{{ block_id }}" class="p-5 space-y-4" data-inspector-refresh="metadata" {% if inspector.supports_partitions
+    %}
+    hx-get="/inspector/node/{{ inspector.node.unique_id | urlencode }}/partition?selection_token={{ inspector.selection_token }}"
+    hx-swap="outerHTML" {% endif %}>
     <div class="space-y-1">
-      <h2 class="text-sm font-medium">Partition data</h2>
-      {% if calendar %}
-      <p class="text-xs text-zinc-500">Last sync: {{ last_synced }}</p>
-      <p class="text-xs text-zinc-500">Median row count: {{ median }}</p>
-      <p class="text-xs {{ status_class }}">{{ status_label }}</p>
-      {% if calendar.last_error %}
-      <p class="text-xs text-rose-400">{{ calendar.last_error }}</p>
-      {% endif %}
-      {% else %}
-      <p class="text-xs text-zinc-500">Partitions are unavailable for this node.</p>
-      {% endif %}
+        <h2 class="text-sm font-medium">Данные</h2>
+        {% if calendar %}
+            <p class="text-xs text-zinc-500">Последнее обновление: {{ last_synced }}</p>
+            <p class="text-xs text-zinc-500">Медианное количество строк: {{ median }}</p>
+            <p class="text-xs {{ status_class }}">{{ status_label }}</p>
+            {% if calendar.last_error %}<p class="text-xs text-rose-400">{{ calendar.last_error }}</p>{% endif %}
+        {% else %}
+            <p class="text-xs text-zinc-500">Данные о партициях недоступны</p>
+        {% endif %}
     </div>
-    {% if inspector.supports_partitions %}
-    <button
-      class="btn"
-      hx-post="/actions/node/{{ inspector.node.unique_id | urlencode }}/refresh-partitions?selection_token={{ inspector.selection_token }}"
-      hx-target="#{{ block_id }}"
-      hx-swap="outerHTML"
-    >
-      Refresh partition data
-    </button>
-    {% endif %}
-  </div>
-
-  {% if not calendar %}
-  <p class="text-sm text-zinc-500">Partition inspection is not supported for this node.</p>
-  {% elif not month_groups %}
-  <p class="text-sm text-zinc-500">No partition snapshot in local cache yet.</p>
-  {% else %}
-  <div class="partition-years space-y-5 ">
-    {% for year_group in month_groups %}
-    <section class="space-y-2">
-      <div class="flex items-center gap-3">
-        <div class="h-px flex-1 bg-zinc-800"></div>
-        <span class="text-sm font-medium tracking-[0.1em] text-zinc-500">{{ year_group.year }}</span>
-      </div>
-      <div class="partition-month-grid">
-        {% for month in year_group.months %}
-        <section class="flex flex-col gap-1">
-          <h3 class="text-sm font-light text-right leading-none text-zinc-100">{{ month.month_label }}</h3>
-          <div class="partition-days">
-            {% for _ in month.leading_empty_days %}
-            <div class="partition-day-spacer"></div>
-            {% endfor %}
-            {% for day in month.days %}
-            <div class="partition-day {{ day.color_class }}" title="{{ day.title }}"></div>
-            {% endfor %}
-          </div>
-        </section>
-        {% endfor %}
-      </div>
+    {% if not calendar %}
+        <p class="text-sm text-zinc-500">Данные о партициях недоступны</p>
+    {% elif not month_groups %}
+        <p class="text-sm text-zinc-500">Нет данных кэше.</p>
+    {% else %}
+        <div class="partition-years space-y-5 ">
+            {% for year_group in month_groups %}
+                <section class="space-y-2">
+                    <div class="flex items-center gap-3">
+                        <div class="h-px flex-1 bg-zinc-800"></div>
+                        <span class="text-sm font-medium tracking-[0.1em] text-zinc-500">{{ year_group.year }}</span>
+                    </div>
+                    <div class="partition-month-grid">
+                        {% for month in year_group.months %}
+                            <section class="flex flex-col gap-1">
+                                <h3 class="text-sm font-light text-right leading-none text-zinc-100">{{ month.month_label }}</h3>
+                                <div class="partition-days">
+                                    {% for _ in month.leading_empty_days %}<div class="partition-day-spacer"></div>{% endfor %}
+                                    {% for day in month.days %}
+                                        <div class="partition-day {{ day.color_class }}" title="{{ day.title }}"></div>
+                                        {%
+                                        endfor %}
+                                    </div>
+                                </section>
+                            {% endfor %}
+                        </div>
+                    </section>
+                {% endfor %}
+            </div>
+        {% endif %}
+        {% if inspector.supports_partitions %}
+            <button class="btn"
+                    hx-post="/actions/node/{{ inspector.node.unique_id | urlencode }}/refresh-partitions?selection_token={{ inspector.selection_token }}"
+                    hx-target="#{{ block_id }}"
+                    hx-swap="outerHTML">Обновить</button>
+        {% endif %}
     </section>
-    {% endfor %}
-  </div>
-  {% endif %}
-</section>

@@ -1,7 +1,9 @@
 from dbt_dag.metadata.models import RuntimeDataSource
-from dbt_dag.partitions.models import ModelPartitionCalendarDTO
-from dbt_dag.partitions.models import PartitionMonthDTO
-from dbt_dag.partitions.models import PartitionSyncStatus
+from dbt_dag.partitions.models import (
+    ModelPartitionCalendarDTO,
+    PartitionMonthDTO,
+    PartitionSyncStatus,
+)
 
 
 def block_id(block_name: str, selection_token: str) -> str:
@@ -18,12 +20,12 @@ def source_label(source: RuntimeDataSource) -> str:
 
 def partition_status_label(calendar: ModelPartitionCalendarDTO) -> str:
     if calendar.sync_status == PartitionSyncStatus.RUNNING:
-        return "Refreshing in background"
+        return "Обновляется"
     if calendar.sync_status == PartitionSyncStatus.FAILED:
-        return "Last refresh failed"
+        return "Ошибка обновления"
     if calendar.is_stale:
-        return "Snapshot is stale"
-    return "Snapshot is fresh"
+        return "Устаревшие данные"
+    return "Обновлено"
 
 
 def partition_status_class(calendar: ModelPartitionCalendarDTO) -> str:

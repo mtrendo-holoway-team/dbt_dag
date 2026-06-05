@@ -1,11 +1,27 @@
-<section id="{{ block_id }}" class="space-y-3 rounded-lg border border-zinc-800 bg-zinc-950/40 p-4">
-  <h2 class="text-sm font-medium">Actions</h2>
-  <button
-    class="btn"
-    hx-post="/actions/node/{{ inspector.node.unique_id | urlencode }}/build?selection_token={{ inspector.selection_token }}"
-    hx-target="#{{ tasks_block_id }}"
-    hx-swap="outerHTML"
-  >
-    Run build
-  </button>
+{% from "inspectors/macros.html" import heroicon %}
+{% if actions %}
+    <section id="{{ block_id }}"
+             class="space-y-3 p-5"
+             data-node-id="{{ inspector.node.unique_id }}"
+             data-node-type="{{ inspector.node.resource_type }}"
+             data-selection-token="{{ inspector.selection_token }}">
+        <div class="grid grid-cols-4 gap-3">
+            {% for action in actions %}
+                <button type="button"
+                        class="flex flex-col items-center justify-between gap-1 cursor-pointer transition hover:bg-zinc-900"
+                        data-command-action="{{ action.action }}"
+                        data-command-shortcut="{{ action.shortcut }}"
+                        data-command-url="{{ action.url }}"
+                        data-command-label="{{ action.label }}">
+                        <div class="text-cyan-300">{{ heroicon(action.icon) }}</div>
+                        <div class="text-sm text-zinc-200 flex flex-col items-center">
+                            {{ action.label }}
+                            <span class="rounded border border-zinc-700 px-1 py-0.5 font-mono text-xs uppercase text-zinc-400">
+                                {{ action.shortcut }}
+                            </span>
+                        </div>
+                </button>
+            {% endfor %}
+        </div>
+    {% endif %}
 </section>

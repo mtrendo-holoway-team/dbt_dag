@@ -3,6 +3,13 @@ from datetime import datetime
 from enum import StrEnum
 
 
+class NodeAction(StrEnum):
+    BUILD = "build"
+    RUN = "run"
+    TEST = "test"
+    COMPILE = "compile"
+
+
 class TaskStatus(StrEnum):
     CREATED = "created"
     RUNNING = "running"

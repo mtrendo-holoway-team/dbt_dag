@@ -1,21 +1,11 @@
-<section id="{{ block_id }}" class="space-y-3 rounded-lg border border-zinc-800 bg-zinc-950/40 p-4">
-  <h2 class="text-sm font-medium">Last update</h2>
-  <dl class="grid gap-3 text-sm sm:grid-cols-2">
-    <div class="rounded-lg border border-zinc-800 bg-zinc-900/70 p-3">
-      <dt class="text-xs text-zinc-500">Updated at</dt>
+<section id="{{ block_id }}" class="space-y-3 p-5">
+    <div class="">
+      <dt class="text-xs text-zinc-500">Обновлено</dt>
       <dd class="mt-1 text-zinc-200">{{ updated_at }}</dd>
     </div>
-    <div class="rounded-lg border border-zinc-800 bg-zinc-900/70 p-3">
-      <dt class="text-xs text-zinc-500">Freshness</dt>
-      <dd class="mt-1 text-zinc-200">{{ inspector.runtime.freshness.value }}</dd>
-    </div>
-    <div class="rounded-lg border border-zinc-800 bg-zinc-900/70 p-3">
-      <dt class="text-xs text-zinc-500">Execution time</dt>
+    <div class="">
+      <dt class="text-xs text-zinc-500">Время расчета</dt>
       <dd class="mt-1 text-zinc-200">{{ execution_time }}</dd>
-    </div>
-    <div class="rounded-lg border border-zinc-800 bg-zinc-900/70 p-3">
-      <dt class="text-xs text-zinc-500">Source</dt>
-      <dd class="mt-1 text-zinc-200">{{ updated_source }} / {{ execution_source }}</dd>
     </div>
   </dl>
 </section>

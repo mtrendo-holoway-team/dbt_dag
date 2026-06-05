@@ -1,8 +1,9 @@
 @import "tailwindcss";
 @import "./components.css";
 @source "../../templates";
+@source "../../../";
 
 html,
 body {
-  margin: 0;
+	@apply m-0;
 }

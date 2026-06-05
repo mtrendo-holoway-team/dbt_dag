@@ -1,11 +1,11 @@
 <section
   id="{{ block_id }}"
-  class="space-y-3 rounded-lg border border-zinc-800 bg-zinc-950/40 p-4"
-  data-inspector-refresh="metadata"
+  class="space-y-3 p-5"
+  data-inspector-refresh="tasks"
   hx-get="/inspector/node/{{ inspector.node.unique_id | urlencode }}/tasks?selection_token={{ inspector.selection_token }}"
   hx-swap="outerHTML"
 >
-  <h2 class="text-sm font-medium">Tasks</h2>
+  <h2 class="text-sm font-medium">Задачи</h2>
   {% if inspector.tasks %}
   <div class="space-y-2">
     {% for task in inspector.tasks %}
@@ -19,6 +19,6 @@
     {% endfor %}
   </div>
   {% else %}
-  <p class="text-sm text-zinc-500">No tasks yet.</p>
+  <p class="text-sm text-zinc-500">Задач нет</p>
   {% endif %}
 </section>

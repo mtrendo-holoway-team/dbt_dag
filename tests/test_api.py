@@ -93,14 +93,46 @@ def test_metadata_revision_endpoint_returns_revision(dbt_project: Path, tmp_path
     assert response.json()["revision"] == 1
 
 
-def test_build_action_creates_task(dbt_project: Path, tmp_path: Path) -> None:
-    client = _client(dbt_project, tmp_path)
+def test_model_action_endpoint_streams_ndjson(dbt_project: Path, tmp_path: Path) -> None:
+    task_runner = Mock()
+    task_runner.supports_action.return_value = True
+    task_runner.stream_action.return_value = iter(
+        [
+            '{"event":"start","command":"dbt run --select model.demo.stg_orders"}\n',
+            '{"event":"finish","ok":true,"exit_code":0}\n',
+        ]
+    )
+    client = _client(dbt_project, tmp_path, task_runner=task_runner)
 
-    response = client.post("/actions/node/model.demo.stg_orders/build?selection_token=token123")
+    response = client.post("/actions/node/model.demo.stg_orders/execute/run")
 
     assert response.status_code == 200
-    assert "dbt build --select model.demo.stg_orders" in response.text
-    assert 'id="inspector-block-tasks-token123"' in response.text
+    assert response.headers["content-type"].startswith("application/x-ndjson")
+    assert '"event":"start"' in response.text
+    task_runner.stream_action.assert_called_once()
+
+
+def test_model_action_endpoint_rejects_non_model_nodes(dbt_project: Path, tmp_path: Path) -> None:
+    task_runner = Mock()
+    client = _client(dbt_project, tmp_path, task_runner=task_runner)
+
+    response = client.post("/actions/node/source.demo.raw.orders/execute/build")
+
+    assert response.status_code == 404
+    task_runner.stream_action.assert_not_called()
+
+
+def test_model_action_endpoint_returns_400_for_unknown_action(
+    dbt_project: Path,
+    tmp_path: Path,
+) -> None:
+    task_runner = Mock()
+    client = _client(dbt_project, tmp_path, task_runner=task_runner)
+
+    response = client.post("/actions/node/model.demo.stg_orders/execute/unknown")
+
+    assert response.status_code == 400
+    task_runner.stream_action.assert_not_called()
 
 
 def test_partition_partial_endpoint_returns_calendar(dbt_project: Path, tmp_path: Path) -> None:
@@ -192,15 +224,12 @@ def _client(
     partition_runner: Mock | None = None,
     partition_service: Mock | None = None,
     task_repository: Mock | None = None,
+    task_runner: Mock | None = None,
 ) -> TestClient[Litestar]:
     engine = create_db_engine(tmp_path / "app.sqlite")
     init_db(engine)
     repository = task_repository or NodeTaskRepository(create_session_factory(engine))
-    task_runner = Mock()
-    if hasattr(repository, "create"):
-        task_runner.start_build.side_effect = lambda node_id: repository.create(
-            node_id, f"dbt build --select {node_id}"
-        )
+    task_runner = task_runner or Mock()
     graph_store = GraphStateStore(
         dbt_project / "target" / "manifest.json",
         _empty_metadata_service(),

@@ -7,6 +7,7 @@ from litestar import post
 from litestar import Request
 from litestar.enums import MediaType
 from litestar.response import Response
+from litestar.response import Stream
 from litestar.response import Template
 
 from dbt_dag.inspectors import actions as actions_inspector
@@ -15,6 +16,8 @@ from dbt_dag.inspectors import NodeInspectorContextFactory
 from dbt_dag.inspectors import partition as partition_inspector
 from dbt_dag.inspectors import tasks as tasks_inspector
 from dbt_dag.inspectors.utils import block_id
+from dbt_dag.manifest.models import DbtManifestNode
+from dbt_dag.tasks.models import NodeAction
 from dbt_dag.web.render import render_page
 from dbt_dag.web.state import AppState
 
@@ -120,26 +123,23 @@ class PagesController(Controller):
             context=actions_inspector.build_template_context(inspector),
         )
 
-    @post("/actions/node/{node_id:str}/build", status_code=200)
-    async def build_node(
+    @post("/actions/node/{node_id:str}/execute/{action_name:str}", status_code=200)
+    async def execute_node_action(
         self,
         request: Request[Any, Any, Any],
         node_id: str,
-        selection_token: str = "initial",
-    ) -> Response[str] | Template:
+        action_name: str,
+    ) -> Response[str] | Stream:
         state = _state(request)
-        if node_id not in state.graph_store.snapshot().manifest.graph_nodes():
-            return Response(content="", media_type=MediaType.HTML, status_code=404)
-        state.task_runner.start_build(node_id)
-        inspector = _context_factory.build(
-            state,
-            node_id,
-            selection_token,
-            include_tasks=True,
-        )
-        return Template(
-            template_name=tasks_inspector.TEMPLATE_NAME,
-            context=tasks_inspector.build_template_context(inspector),
+        node = _model_node_for_action(state, node_id)
+        if node is None:
+            return Response(content="", media_type="text/plain", status_code=404)
+        action = _parse_action(action_name)
+        if action is None or not state.task_runner.supports_action(node, action):
+            return Response(content="", media_type="text/plain", status_code=400)
+        return Stream(
+            state.task_runner.stream_action(node, action),
+            media_type="application/x-ndjson",
         )
 
     @post("/actions/node/{node_id:str}/refresh-partitions", status_code=200)
@@ -254,3 +254,17 @@ def _graph_payload(graph: Any) -> dict[str, Any]:
             "tests_count": graph.project.tests_count,
         },
     }
+
+
+def _model_node_for_action(state: AppState, node_id: str) -> DbtManifestNode | None:
+    node = state.graph_store.snapshot().manifest.graph_nodes().get(node_id)
+    if node is None or node.resource_type != "model":
+        return None
+    return node
+
+
+def _parse_action(action_name: str) -> NodeAction | None:
+    try:
+        return NodeAction(action_name)
+    except ValueError:
+        return None

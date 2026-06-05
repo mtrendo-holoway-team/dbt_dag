@@ -5,6 +5,7 @@ import pytest
 
 from litestar.plugins.jinja import JinjaTemplateEngine
 
+from dbt_dag.inspectors import actions as actions_inspector
 from dbt_dag.inspectors import partition as partition_inspector
 from dbt_dag.inspectors.dto import NodeInspectorContextDTO
 from dbt_dag.manifest.models import DbtManifestNode
@@ -83,6 +84,36 @@ def test_shell_template_renders_tokenized_block_ids() -> None:
     assert "/inspector/node/model.demo.stg_orders/last-update?selection_token=token123" in html
     assert 'id="inspector-block-tasks-token123"' in html
     assert "/inspector/node/model.demo.stg_orders/tasks?selection_token=token123" in html
+
+
+def test_actions_template_renders_model_actions_with_shortcuts() -> None:
+    inspector = _inspector_context(resource_type="model")
+
+    html = (
+        _template_engine()
+        .get_template(actions_inspector.TEMPLATE_NAME)
+        .render(**actions_inspector.build_template_context(inspector))
+    )
+
+    assert "Build" in html
+    assert "Run" in html
+    assert "Test" in html
+    assert "Compile" in html
+    assert "ab" in html
+    assert "/actions/node/model.demo.stg_orders/execute/compile" in html
+
+
+def test_actions_template_hides_dbt_buttons_for_non_model_nodes() -> None:
+    inspector = _inspector_context(resource_type="source")
+
+    html = (
+        _template_engine()
+        .get_template(actions_inspector.TEMPLATE_NAME)
+        .render(**actions_inspector.build_template_context(inspector))
+    )
+
+    assert "dbt actions are available only for model nodes." in html
+    assert 'data-command-action="' not in html
 
 
 def test_partition_template_contains_fill_states() -> None:
@@ -384,3 +415,24 @@ def test_partition_day_color_thresholds() -> None:
 
 def _template_engine() -> JinjaTemplateEngine:
     return JinjaTemplateEngine(directory=TEMPLATES_DIRECTORY)
+
+
+def _inspector_context(resource_type: str) -> NodeInspectorContextDTO:
+    return NodeInspectorContextDTO(
+        selection_token="token123",
+        node=DbtManifestNode(
+            unique_id="model.demo.stg_orders",
+            name="stg_orders",
+            resource_type=resource_type,
+            description="Staged orders",
+            depends_on=[],
+            package_name="demo",
+            path="models/stg/stg_orders.sql",
+            fqn=["demo", "stg", "stg_orders"],
+            raw={},
+        ),
+        runtime=empty_node_runtime_metadata(),
+        tasks=[],
+        partition_calendar=None,
+        supports_partitions=resource_type == "model",
+    )

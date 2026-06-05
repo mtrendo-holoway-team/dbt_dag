@@ -4,13 +4,17 @@ from statistics import median
 from typing import Any
 
 from dbt_dag.inspectors.dto import NodeInspectorContextDTO
-from dbt_dag.inspectors.utils import block_id
-from dbt_dag.inspectors.utils import group_months_by_year
-from dbt_dag.inspectors.utils import partition_status_class
-from dbt_dag.inspectors.utils import partition_status_label
-from dbt_dag.partitions.models import ModelPartitionCalendarDTO
-from dbt_dag.partitions.models import PartitionDayCellDTO
-from dbt_dag.partitions.models import PartitionMonthDTO
+from dbt_dag.inspectors.utils import (
+    block_id,
+    group_months_by_year,
+    partition_status_class,
+    partition_status_label,
+)
+from dbt_dag.partitions.models import (
+    ModelPartitionCalendarDTO,
+    PartitionDayCellDTO,
+    PartitionMonthDTO,
+)
 
 TEMPLATE_NAME = "inspectors/blocks/partition.html"
 _REFERENCE_WINDOW = 7
@@ -54,7 +58,7 @@ def build_template_context(inspector: NodeInspectorContextDTO) -> dict[str, Any]
 
 def _format_median(calendar: ModelPartitionCalendarDTO) -> str:
     if calendar.median_row_count is None:
-        return "No data"
+        return "Нет данных"
     if calendar.median_row_count.is_integer():
         return str(int(calendar.median_row_count))
     return f"{calendar.median_row_count:.1f}"
@@ -62,7 +66,7 @@ def _format_median(calendar: ModelPartitionCalendarDTO) -> str:
 
 def _format_last_synced(calendar: ModelPartitionCalendarDTO) -> str:
     if calendar.last_synced_at is None:
-        return "No sync yet"
+        return "Не синхронизировано"
     return calendar.last_synced_at.strftime("%Y-%m-%d %H:%M:%S MSK")
 
 
@@ -113,9 +117,9 @@ def _build_day(
 ) -> dict[str, str]:
     day = day_reference.day
     title = (
-        f"{day.date.isoformat()} - {day.row_count} rows"
+        f"{day.date.isoformat()} - {day.row_count} строк"
         if day.row_count is not None
-        else f"{day.date.isoformat()} - No data"
+        else f"{day.date.isoformat()} - Нет данных"
     )
     return {
         "title": title,

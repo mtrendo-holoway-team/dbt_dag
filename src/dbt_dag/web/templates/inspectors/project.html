@@ -1,20 +1,16 @@
-<section class="space-y-5">
-  <header>
-    <h1 class="text-lg font-semibold">Project</h1>
-    <p class="text-sm text-zinc-400">Current dbt manifest summary</p>
-  </header>
+<section class="space-y-5 mx-5">
   <dl class="grid grid-cols-3 gap-3">
-    <div class="rounded-lg border border-zinc-800 bg-zinc-950/40 p-3">
-      <dt class="text-xs text-zinc-500">Models</dt>
+    <div class="">
       <dd class="text-xl font-semibold">{{ project.models_count }}</dd>
+			<dt class="text-xs text-zinc-500">Моделей</dt>
     </div>
-    <div class="rounded-lg border border-zinc-800 bg-zinc-950/40 p-3">
-      <dt class="text-xs text-zinc-500">Sources</dt>
+    <div class="">
       <dd class="text-xl font-semibold">{{ project.sources_count }}</dd>
+      <dt class="text-xs text-zinc-500">Источников</dt>
     </div>
-    <div class="rounded-lg border border-zinc-800 bg-zinc-950/40 p-3">
-      <dt class="text-xs text-zinc-500">Tests</dt>
+    <div class="">
       <dd class="text-xl font-semibold">{{ project.tests_count }}</dd>
+      <dt class="text-xs text-zinc-500">Тестов</dt>
     </div>
   </dl>
 </section>
