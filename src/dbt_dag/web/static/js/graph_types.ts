@@ -3,6 +3,8 @@ export type GraphNodeRuntime = {
   execution_time_source: string;
   last_updated_at: string | null;
   last_updated_source: string;
+  status_icon_name: string;
+  status_color_hex: string;
   freshness: string;
   border_width_px: number;
   border_color: string;

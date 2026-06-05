@@ -11,8 +11,10 @@ import {
   graphRelatedNodeIds,
   getCenterAnchor,
   hasGraphNode,
+  rearrangeVisibleNodes,
   renderGraph
 } from "./graph_cytoscape";
+import { createGraphHtmlLabels } from "./graph_html_labels";
 import { createRelativeNavigation } from "./graph_relative_navigation";
 import { refreshInspectorMetadataBlocks } from "./inspectors";
 import type {
@@ -59,6 +61,7 @@ async function loadGraph(): Promise<void> {
     filterMode: null as FilterMode | null,
     isolatedNodeIds: null as Set<string> | null
   };
+  const htmlLabels = createGraphHtmlLabels(container, state.cy);
   const relativeNavigation = createRelativeNavigation(container, state.cy, focusNode);
   let renderVersion = 0;
   let refreshVersion = 0;
@@ -117,7 +120,9 @@ async function loadGraph(): Promise<void> {
     }
   });
   hotkeys("f,z,i", (event, handler) => {
-    if (isEditableTarget(event.target) || !state.selectedNodeId) return;
+    if (isEditableTarget(event.target)) return;
+
+    if (!state.selectedNodeId) return;
 
     if (handler.key === "f") {
       event.preventDefault();
@@ -140,10 +145,10 @@ async function loadGraph(): Promise<void> {
     if (handler.key === "i") {
       event.preventDefault();
       if (state.isolatedNodeIds) {
-        clearIsolation();
+        void clearIsolation();
         return;
       }
-      isolateSelection();
+      void isolateSelection();
     }
   });
 
@@ -166,6 +171,7 @@ async function loadGraph(): Promise<void> {
     );
     if (currentVersion !== renderVersion) return;
     applyCurrentSelection();
+    htmlLabels.sync();
   }
 
   function selectNode(nodeId: string): void {
@@ -198,6 +204,7 @@ async function loadGraph(): Promise<void> {
       state.upstream,
       state.downstream
     );
+    htmlLabels.sync();
     relativeNavigation.render(
       state.selectedNodeId,
       currentVisibleNodeIds(),
@@ -206,7 +213,7 @@ async function loadGraph(): Promise<void> {
     );
   }
 
-  function isolateSelection(): void {
+  async function isolateSelection(): Promise<void> {
     if (!state.selectedNodeId) return;
     state.isolatedNodeIds = graphRelatedNodeIds(
       state.selectedNodeId,
@@ -214,14 +221,20 @@ async function loadGraph(): Promise<void> {
       state.upstream,
       state.downstream
     );
+    await rearrangeCurrentVisibleNodes();
     applyCurrentSelection();
     frameGraphNodes(state.cy, state.isolatedNodeIds);
   }
 
-  function clearIsolation(): void {
+  async function clearIsolation(): Promise<void> {
     if (!state.isolatedNodeIds) return;
     state.isolatedNodeIds = null;
     applyCurrentSelection();
+    window.requestAnimationFrame(() => {
+      void rearrangeCurrentVisibleNodes().then(() => {
+        applyCurrentSelection();
+      });
+    });
   }
 
   function clearHiddenSelection(): void {
@@ -236,6 +249,12 @@ async function loadGraph(): Promise<void> {
     const activeNodeIds = visibleNodeIds(payload.nodes, state.activePackages);
     if (!state.isolatedNodeIds) return activeNodeIds;
     return new Set([...activeNodeIds].filter((nodeId) => state.isolatedNodeIds?.has(nodeId)));
+  }
+
+  async function rearrangeCurrentVisibleNodes(): Promise<void> {
+    const visibleNodeIds = currentVisibleNodeIds();
+    const anchor = getCenterAnchor(state.cy, visibleNodeIds);
+    await rearrangeVisibleNodes(state.cy, payload, visibleNodeIds, anchor);
   }
 
   async function refreshIfNeeded(): Promise<void> {

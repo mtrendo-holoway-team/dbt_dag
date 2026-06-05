@@ -17,7 +17,9 @@ from dbt_dag.inspectors import partition as partition_inspector
 from dbt_dag.inspectors import tasks as tasks_inspector
 from dbt_dag.inspectors.utils import block_id
 from dbt_dag.manifest.models import DbtManifestNode
+from dbt_dag.metadata.models import empty_node_runtime_metadata
 from dbt_dag.tasks.models import NodeAction
+from dbt_dag.web.node_status import resolve_node_status_icon
 from dbt_dag.web.render import render_page
 from dbt_dag.web.state import AppState
 
@@ -67,10 +69,15 @@ class PagesController(Controller):
         state = _state(request)
         snapshot = state.graph_store.snapshot()
         node = snapshot.manifest.graph_nodes()[node_id]
+        runtime_metadata = snapshot.runtime_metadata.get(node_id, empty_node_runtime_metadata())
         return Template(
             template_name="inspectors/shell.html",
             context={
                 "node": node,
+                "status_icon": resolve_node_status_icon(
+                    runtime_metadata.last_updated_at,
+                    reference_time=snapshot.refreshed_at,
+                ),
                 "selection_token": selection_token,
                 "last_update_block_id": block_id("last-update", selection_token),
                 "partition_block_id": block_id("partition", selection_token),
@@ -233,6 +240,8 @@ def _graph_payload(graph: Any) -> dict[str, Any]:
                         else None
                     ),
                     "last_updated_source": node.runtime.last_updated_source.value,
+                    "status_icon_name": node.runtime.status_icon_name,
+                    "status_color_hex": node.runtime.status_color_hex,
                     "freshness": node.runtime.freshness.value,
                     "border_width_px": node.runtime.border_width_px,
                     "border_color": node.runtime.border_color,

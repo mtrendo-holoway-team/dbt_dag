@@ -1,3 +1,5 @@
+from datetime import datetime
+
 from dbt_dag.graph.models import GRAPH_COLUMNS
 from dbt_dag.graph.models import GraphEdge
 from dbt_dag.graph.models import GraphGroup
@@ -9,6 +11,8 @@ from dbt_dag.manifest.models import DbtManifest
 from dbt_dag.manifest.models import DbtManifestNode
 from dbt_dag.metadata.models import empty_node_runtime_metadata
 from dbt_dag.metadata.models import NodeRuntimeMetadata
+from dbt_dag.shared.time import now_msk
+from dbt_dag.web.node_status import resolve_node_status_icon
 
 
 def classify_node(node: DbtManifestNode) -> str:
@@ -45,6 +49,7 @@ def build_graph(
     manifest: DbtManifest,
     runtime_metadata: dict[str, NodeRuntimeMetadata] | None = None,
 ) -> GraphPayload:
+    reference_time = now_msk()
     graph_nodes = manifest.graph_nodes()
     groups = _build_groups(graph_nodes)
     nodes = [
@@ -58,9 +63,12 @@ def build_graph(
             description=node.description,
             indicators=[],
             runtime=_graph_runtime(
-                runtime_metadata.get(node.unique_id)
-                if runtime_metadata is not None
-                else empty_node_runtime_metadata()
+                (
+                    runtime_metadata.get(node.unique_id)
+                    if runtime_metadata is not None
+                    else empty_node_runtime_metadata()
+                ),
+                reference_time=reference_time,
             ),
         )
         for node in graph_nodes.values()
@@ -109,14 +117,23 @@ def node_type_badge(node: DbtManifestNode) -> str:
     return badge_by_materialization.get(materialized, "M")
 
 
-def _graph_runtime(metadata: NodeRuntimeMetadata | None) -> GraphNodeRuntime:
+def _graph_runtime(
+    metadata: NodeRuntimeMetadata | None,
+    reference_time: datetime,
+) -> GraphNodeRuntime:
     if metadata is None:
         metadata = empty_node_runtime_metadata()
+    status_icon = resolve_node_status_icon(
+        metadata.last_updated_at,
+        reference_time=reference_time,
+    )
     return GraphNodeRuntime(
         execution_time_seconds=metadata.execution_time_seconds,
         execution_time_source=metadata.execution_time_source,
         last_updated_at=metadata.last_updated_at,
         last_updated_source=metadata.last_updated_source,
+        status_icon_name=status_icon.icon_name,
+        status_color_hex=status_icon.color_hex,
         freshness=metadata.freshness,
         border_width_px=metadata.border_width_px,
         border_color=metadata.border_color,

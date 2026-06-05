@@ -1,8 +1,11 @@
-{% from "inspectors/macros.html" import loading_block %}
+{% from "inspectors/macros.html" import loading_block, node_status_icon %}
 <section class="divide-y divide-stone-500">
     <header class="px-5 pb-5 space-y-1">
         <p class="text-xs uppercase tracking-wide text-cyan-400">{{ node.resource_type }}</p>
-        <h1 class="text-lg font-semibold">{{ node.name }}</h1>
+        <h1 class="flex items-center gap-2 text-lg font-semibold">
+            <span>{{ node.name }}</span>
+            {{ node_status_icon(status_icon) }}
+        </h1>
         <p class="break-all text-xs text-zinc-500">{{ node.unique_id }}</p>
         <p class="text-sm leading-6 text-zinc-300">{{ node.description or "No description." }}</p>
     </header>

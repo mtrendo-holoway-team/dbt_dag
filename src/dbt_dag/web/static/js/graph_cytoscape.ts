@@ -44,6 +44,7 @@ const minNodeWidth = 96;
 const maxNodeWidth = 360;
 const nodeHorizontalPadding = 34;
 const averageLabelCharacterWidth = 7;
+const nodeStatusIconWidth = 28;
 const directionGap = 130;
 const sourceNodeGap = 70;
 const nodeSpacing = 32;
@@ -100,6 +101,34 @@ export async function renderGraph(
   });
   await runFcoseLayout(cy, visiblePayload, fit, anchor);
   applySelectionState(cy, selectedNodeId, filterMode, upstream, downstream);
+}
+
+export async function rearrangeVisibleNodes(
+  cy: Core,
+  payload: GraphPayload,
+  visibleNodeIds: Set<string>,
+  anchor: ViewAnchor | null
+): Promise<void> {
+  const visiblePayload = filterPayloadByNodeIds(payload, visibleNodeIds);
+  if (visiblePayload.nodes.length === 0) return;
+
+  const visibleElements = cy.elements().filter((element) => {
+    if (element.isNode()) {
+      const kind = element.data("kind");
+      if (kind === "node") return visibleNodeIds.has(element.id());
+      if (kind === "group") {
+        return visiblePayload.groups.some((group) => group.id === element.id());
+      }
+    }
+    if (element.isEdge()) {
+      const source = element.data("source") as string;
+      const target = element.data("target") as string;
+      return visibleNodeIds.has(source) && visibleNodeIds.has(target);
+    }
+    return false;
+  });
+
+  await runFcoseLayout(visibleElements, visiblePayload, false, anchor, cy);
 }
 export function applySelectionState(
   cy: Core,
@@ -187,13 +216,15 @@ export function hasGraphNode(cy: Core, nodeId: string): boolean {
 }
 
 function runFcoseLayout(
-  cy: Core,
+  layoutTarget: Core | CollectionReturnValue,
   payload: GraphPayload,
   fit: boolean,
-  anchor: ViewAnchor | null
+  anchor: ViewAnchor | null,
+  cy: Core = layoutTarget as Core
 ): Promise<void> {
   return new Promise((resolve) => {
-    const layout = cy.layout({
+    const payloadNodeIds = new Set(payload.nodes.map((node) => node.id));
+    const layout = layoutTarget.layout({
       name: "fcose",
       quality: "default",
       randomize: true,
@@ -217,7 +248,11 @@ function runFcoseLayout(
       initialEnergyOnIncremental: 0.5,
       ...layoutConstraints(payload),
       stop: () => {
-        enforceNodeSpacing(cy);
+        enforceNodeSpacing(
+          cy
+            .nodes("[kind = 'node']")
+            .filter((node): node is NodeSingular => node.isNode() && payloadNodeIds.has(node.id()))
+        );
         if (anchor) {
           applyAnchor(cy, anchor);
         } else if (fit) {
@@ -242,9 +277,11 @@ function elementsForPayload(payload: GraphPayload): ElementDefinition[] {
     const data: Record<string, string | number> = {
       id: node.id,
       label: node.label,
-      displayLabel,
       kind: "node",
       nodeWidth: nodeWidthForLabel(displayLabel),
+      typeBadge: node.type_badge,
+      statusIconName: node.runtime.status_icon_name,
+      statusColorHex: node.runtime.status_color_hex,
       column: node.column,
       fillColor: nodeFill(node),
       borderColor: node.runtime.border_color,
@@ -271,13 +308,7 @@ function graphStyle(): Stylesheet[] {
         "background-color": "data(fillColor)",
         "border-color": "data(borderColor)",
         "border-width": "data(borderWidth)",
-        label: "data(displayLabel)",
-        color: "#18181b",
-        "font-family": "system-ui, sans-serif",
-        "font-size": 13,
-        "text-halign": "center",
-        "text-valign": "center",
-        "text-wrap": "none",
+        label: "",
         "overlay-opacity": 0
       }
     },
@@ -393,8 +424,7 @@ function directionConstraints(payload: GraphPayload): HorizontalPlacementConstra
   return constraints;
 }
 
-function enforceNodeSpacing(cy: Core): void {
-  const nodes = cy.nodes("[kind = 'node']").filter((node): node is NodeSingular => node.isNode());
+function enforceNodeSpacing(nodes: CollectionReturnValue): void {
   for (let iteration = 0; iteration < maxSpacingIterations; iteration += 1) {
     let moved = false;
     for (let leftIndex = 0; leftIndex < nodes.length; leftIndex += 1) {
@@ -432,7 +462,7 @@ function separateNodes(left: NodeSingular, right: NodeSingular): boolean {
 
 function nodeWidthForLabel(label: string): number {
   return clamp(
-    label.length * averageLabelCharacterWidth + nodeHorizontalPadding,
+    label.length * averageLabelCharacterWidth + nodeHorizontalPadding + nodeStatusIconWidth,
     minNodeWidth,
     maxNodeWidth
   );
@@ -456,9 +486,13 @@ function applyAnchor(cy: Core, anchor: ViewAnchor): void {
 function filterPayload(payload: GraphPayload, activePackages: Set<string>): GraphPayload {
   const nodes = payload.nodes.filter((node) => activePackages.has(node.package_name));
   const nodeIds = new Set(nodes.map((node) => node.id));
+  return filterPayloadByNodeIds(payload, nodeIds);
+}
+
+function filterPayloadByNodeIds(payload: GraphPayload, nodeIds: Set<string>): GraphPayload {
   return {
     columns: payload.columns,
-    nodes,
+    nodes: payload.nodes.filter((node) => nodeIds.has(node.id)),
     edges: payload.edges.filter((edge) => nodeIds.has(edge.source) && nodeIds.has(edge.target)),
     groups: payload.groups
       .map((group) => ({ ...group, node_ids: group.node_ids.filter((id) => nodeIds.has(id)) }))

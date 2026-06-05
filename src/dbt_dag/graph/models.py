@@ -13,6 +13,8 @@ class GraphNodeRuntime:
     execution_time_source: RuntimeDataSource
     last_updated_at: datetime | None
     last_updated_source: RuntimeDataSource
+    status_icon_name: str
+    status_color_hex: str
     freshness: RuntimeFreshness
     border_width_px: float
     border_color: str
