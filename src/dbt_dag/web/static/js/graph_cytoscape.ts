@@ -15,27 +15,41 @@ import type {
   ViewAnchor
 } from "./graph_types";
 
-type LayoutConstraints = {
-  alignmentConstraint?: {
-    vertical?: string[][];
-  };
-  relativePlacementConstraint?: Array<{
-    left: string;
-    right: string;
-    gap: number;
-  }>;
-};
-
 type LayoutUtilitiesCore = Core & {
   layoutUtilities: (options?: Record<string, unknown>) => void;
 };
 
-const nodeWidth = 210;
+type HorizontalPlacementConstraint = {
+  left: string;
+  right: string;
+  gap: number;
+};
+
+type VerticalPlacementConstraint = {
+  top: string;
+  bottom: string;
+  gap: number;
+};
+
+type RelativePlacementConstraint = HorizontalPlacementConstraint | VerticalPlacementConstraint;
+
+type LayoutConstraints = {
+  alignmentConstraint?: {
+    vertical?: string[][];
+  };
+  relativePlacementConstraint?: RelativePlacementConstraint[];
+};
+
 const nodeHeight = 42;
-const focusAnimationDurationMs = 260;
-const columnGap = 180;
-const edgeGap = 60;
-const maxEdgeConstraints = 400;
+const minNodeWidth = 96;
+const maxNodeWidth = 360;
+const nodeHorizontalPadding = 34;
+const averageLabelCharacterWidth = 7;
+const directionGap = 130;
+const sourceNodeGap = 70;
+const nodeSpacing = 32;
+const maxDirectionConstraints = 300;
+const maxSpacingIterations = 200;
 
 const laneColors: Record<string, string> = {
   sources: "#fbf3c7",
@@ -72,7 +86,6 @@ export async function renderGraph(
   filterMode: FilterMode | null,
   fit: boolean,
   anchor: ViewAnchor | null,
-  focusNodeId: string | null,
   onSelectNode: (nodeId: string) => void,
   upstream: Map<string, Set<string>>,
   downstream: Map<string, Set<string>>
@@ -86,7 +99,7 @@ export async function renderGraph(
   cy.on("tap", "node[kind = 'node']", (event) => {
     onSelectNode(event.target.id());
   });
-  await runFcoseLayout(cy, visiblePayload, fit, anchor, focusNodeId);
+  await runFcoseLayout(cy, visiblePayload, fit, anchor);
   applySelectionState(cy, selectedNodeId, filterMode, upstream, downstream);
 }
 export function applySelectionState(
@@ -110,7 +123,7 @@ export function applySelectionState(
     cy.edges().forEach((edge) => {
       const isRelated =
         relatedNodes?.has(edge.source().id()) && relatedNodes.has(edge.target().id());
-      if (isRelated && filterMode) {
+      if (isRelated) {
         edge.addClass("related");
       } else if (!isRelated) {
         edge.addClass("dimmed");
@@ -166,38 +179,36 @@ function runFcoseLayout(
   cy: Core,
   payload: GraphPayload,
   fit: boolean,
-  anchor: ViewAnchor | null,
-  focusNodeId: string | null
+  anchor: ViewAnchor | null
 ): Promise<void> {
   return new Promise((resolve) => {
     const layout = cy.layout({
       name: "fcose",
       quality: "default",
       randomize: true,
-      animate: true,
+      animate: false,
       fit: true,
       padding: 40,
       uniformNodeDimensions: false,
       packComponents: true,
       tile: true,
-      nodeRepulsion: 3000,
-      idealEdgeLength: 50,
-      edgeElasticity: 0.45,
-      nestingFactor: 1,
-      gravity: 0.25,
-      gravityRange: 5,
-      gravityCompound: 1,
+      nodeRepulsion: 6000,
+      idealEdgeLength: 170,
+      edgeElasticity: 0.25,
+      nestingFactor: 0.4,
+      gravity: 0.08,
+      gravityRange: 3.5,
+      gravityCompound: 3,
       gravityRangeCompound: 1.5,
       numIter: 10000,
-      tilingPaddingVertical: 20,
-      tilingPaddingHorizontal: 20,
+      tilingPaddingVertical: 60,
+      tilingPaddingHorizontal: 60,
       initialEnergyOnIncremental: 0.5,
       ...layoutConstraints(payload),
       stop: () => {
+        enforceNodeSpacing(cy);
         if (anchor) {
           applyAnchor(cy, anchor);
-        } else if (focusNodeId) {
-          centerNode(cy, focusNodeId);
         } else if (fit) {
           cy.fit(undefined, 40);
         }
@@ -216,11 +227,13 @@ function elementsForPayload(payload: GraphPayload): ElementDefinition[] {
   }));
   const nodeElements = payload.nodes.map((node) => {
     const parent = groupIdByNode.get(node.id);
+    const displayLabel = `${node.type_badge}  ${node.label}`;
     const data: Record<string, string | number> = {
       id: node.id,
       label: node.label,
-      displayLabel: `${node.type_badge}  ${node.label}`,
+      displayLabel,
       kind: "node",
+      nodeWidth: nodeWidthForLabel(displayLabel),
       column: node.column,
       fillColor: nodeFill(node),
       borderColor: node.runtime.border_color,
@@ -241,7 +254,7 @@ function graphStyle(): Stylesheet[] {
     {
       selector: "node[kind = 'node']",
       style: {
-        width: nodeWidth,
+        width: "data(nodeWidth)",
         height: nodeHeight,
         shape: "round-rectangle",
         "background-color": "data(fillColor)",
@@ -254,7 +267,6 @@ function graphStyle(): Stylesheet[] {
         "text-halign": "center",
         "text-valign": "center",
         "text-wrap": "none",
-        "text-max-width": 174,
         "overlay-opacity": 0
       }
     },
@@ -271,11 +283,11 @@ function graphStyle(): Stylesheet[] {
         "font-family": "system-ui, sans-serif",
         "font-size": 13,
         "font-weight": 600,
-        "text-halign": "left",
+        "text-halign": "center",
         "text-valign": "top",
-        "text-margin-x": 16,
-        "text-margin-y": 12,
-        padding: 28,
+        "text-margin-x": 0,
+        "text-margin-y": 28,
+        padding: 40,
         "overlay-opacity": 0
       }
     },
@@ -290,7 +302,9 @@ function graphStyle(): Stylesheet[] {
         "line-color": "#777",
         "target-arrow-color": "#777",
         "target-arrow-shape": "triangle",
-        "curve-style": "bezier",
+        "curve-style": "unbundled-bezier",
+        "control-point-distances": 70,
+        "control-point-weights": 0.5,
         "arrow-scale": 0.85,
         "overlay-opacity": 0
       }
@@ -298,10 +312,10 @@ function graphStyle(): Stylesheet[] {
     {
       selector: ".selected",
       style: {
-        "background-color": "#e0f2fe",
-        "border-color": "#a1a1aa",
-        "border-width": 2,
-        "border-style": "dashed",
+        "outline-color": "#0ea5e9",
+        "outline-width": 3,
+        "outline-style": "dashed",
+        "outline-offset": 5,
         "shadow-blur": 10,
         "shadow-color": "#0f172a",
         "shadow-opacity": 0.18,
@@ -310,51 +324,110 @@ function graphStyle(): Stylesheet[] {
     },
     {
       selector: "edge.related",
-      style: { width: 1.67, "line-color": "#0ea5e9", "target-arrow-color": "#0ea5e9" }
+      style: { width: 2 }
     },
     { selector: ".dimmed", style: { opacity: 0.24, "text-opacity": 0.72 } }
   ];
 }
 
+export function centerGraphNode(cy: Core, nodeId: string): void {
+  const node = cy.getElementById(nodeId);
+  if (node.empty()) return;
+  cy.center(node);
+}
+
 function layoutConstraints(payload: GraphPayload): LayoutConstraints {
-  const effectiveColumns = effectiveColumnByNode(payload);
-  const nodesByColumn = new Map<string, string[]>();
-  for (const node of payload.nodes) {
-    const column = effectiveColumns.get(node.id) ?? node.column;
-    const nodeIds = nodesByColumn.get(column) ?? [];
-    nodeIds.push(node.id);
-    nodesByColumn.set(column, nodeIds);
-  }
-  const orderedColumns = payload.columns.filter((column) => nodesByColumn.has(column));
-  const vertical = [...nodesByColumn.values()].filter((nodeIds) => nodeIds.length > 1);
-  const relativePlacementConstraint = relativeColumnConstraints(orderedColumns, nodesByColumn);
-
-  for (const edge of payload.edges) {
-    if (relativePlacementConstraint.length >= maxEdgeConstraints) break;
-    const sourceIndex = orderedColumns.indexOf(effectiveColumns.get(edge.source) ?? "");
-    const targetIndex = orderedColumns.indexOf(effectiveColumns.get(edge.target) ?? "");
-    if (sourceIndex < 0 || targetIndex < 0 || sourceIndex >= targetIndex) continue;
-    relativePlacementConstraint.push({ left: edge.source, right: edge.target, gap: edgeGap });
-  }
-
+  const sourceLaneNodeIds = sourceGroupNodeIds(payload.groups);
+  const relativePlacementConstraint = [
+    ...sourceSpacingConstraints(payload.groups),
+    ...directionConstraints(payload)
+  ];
   return {
-    alignmentConstraint: vertical.length > 0 ? { vertical } : undefined,
+    alignmentConstraint:
+      sourceLaneNodeIds.length > 1 ? { vertical: [sourceLaneNodeIds] } : undefined,
     relativePlacementConstraint:
       relativePlacementConstraint.length > 0 ? relativePlacementConstraint : undefined
   };
 }
 
-function relativeColumnConstraints(
-  orderedColumns: string[],
-  nodesByColumn: Map<string, string[]>
-): Array<{ left: string; right: string; gap: number }> {
-  const constraints: Array<{ left: string; right: string; gap: number }> = [];
-  for (let index = 1; index < orderedColumns.length; index += 1) {
-    const left = nodesByColumn.get(orderedColumns[index - 1])?.[0];
-    const right = nodesByColumn.get(orderedColumns[index])?.[0];
-    if (left && right) constraints.push({ left, right, gap: columnGap });
+function sourceGroupNodeIds(groups: GraphGroup[]): string[] {
+  return sourceGroups(groups).flatMap((group) => group.node_ids);
+}
+
+function sourceGroups(groups: GraphGroup[]): GraphGroup[] {
+  return groups.filter((group) => group.id !== "tag:product");
+}
+
+function sourceSpacingConstraints(groups: GraphGroup[]): VerticalPlacementConstraint[] {
+  const constraints: VerticalPlacementConstraint[] = [];
+  for (const group of sourceGroups(groups)) {
+    for (let index = 1; index < group.node_ids.length; index += 1) {
+      constraints.push({
+        top: group.node_ids[index - 1],
+        bottom: group.node_ids[index],
+        gap: sourceNodeGap
+      });
+    }
   }
   return constraints;
+}
+
+function directionConstraints(payload: GraphPayload): HorizontalPlacementConstraint[] {
+  const constraints: HorizontalPlacementConstraint[] = [];
+  for (const edge of payload.edges) {
+    if (constraints.length >= maxDirectionConstraints) break;
+    constraints.push({ left: edge.source, right: edge.target, gap: directionGap });
+  }
+  return constraints;
+}
+
+function enforceNodeSpacing(cy: Core): void {
+  const nodes = cy.nodes("[kind = 'node']").filter((node): node is NodeSingular => node.isNode());
+  for (let iteration = 0; iteration < maxSpacingIterations; iteration += 1) {
+    let moved = false;
+    for (let leftIndex = 0; leftIndex < nodes.length; leftIndex += 1) {
+      for (let rightIndex = leftIndex + 1; rightIndex < nodes.length; rightIndex += 1) {
+        moved = separateNodes(nodes[leftIndex], nodes[rightIndex]) || moved;
+      }
+    }
+    if (!moved) return;
+  }
+}
+
+function separateNodes(left: NodeSingular, right: NodeSingular): boolean {
+  const leftPosition = left.position();
+  const rightPosition = right.position();
+  const deltaX = rightPosition.x - leftPosition.x;
+  const deltaY = rightPosition.y - leftPosition.y;
+  const overlapX = (left.width() + right.width()) / 2 + nodeSpacing - Math.abs(deltaX);
+  const overlapY = (left.height() + right.height()) / 2 + nodeSpacing - Math.abs(deltaY);
+  if (overlapX <= 0 || overlapY <= 0) return false;
+
+  if (overlapX < overlapY) {
+    const shift = overlapX / 2;
+    const direction = deltaX >= 0 ? 1 : -1;
+    left.position("x", leftPosition.x - shift * direction);
+    right.position("x", rightPosition.x + shift * direction);
+    return true;
+  }
+
+  const shift = overlapY / 2;
+  const direction = deltaY >= 0 ? 1 : -1;
+  left.position("y", leftPosition.y - shift * direction);
+  right.position("y", rightPosition.y + shift * direction);
+  return true;
+}
+
+function nodeWidthForLabel(label: string): number {
+  return clamp(
+    label.length * averageLabelCharacterWidth + nodeHorizontalPadding,
+    minNodeWidth,
+    maxNodeWidth
+  );
+}
+
+function clamp(value: number, minValue: number, maxValue: number): number {
+  return Math.min(Math.max(value, minValue), maxValue);
 }
 
 function applyAnchor(cy: Core, anchor: ViewAnchor): void {
@@ -366,12 +439,6 @@ function applyAnchor(cy: Core, anchor: ViewAnchor): void {
     x: anchor.screenX - position.x * zoom,
     y: anchor.screenY - position.y * zoom
   });
-}
-
-function centerNode(cy: Core, nodeId: string): void {
-  const node = cy.getElementById(nodeId);
-  if (node.empty()) return;
-  cy.animate({ center: { eles: node }, duration: focusAnimationDurationMs });
 }
 
 function filterPayload(payload: GraphPayload, activePackages: Set<string>): GraphPayload {
@@ -396,40 +463,6 @@ function groupIdByNodeId(groups: GraphGroup[]): Map<string, string> {
     });
   });
   return groupIdByNode;
-}
-
-function effectiveColumnByNode(payload: GraphPayload): Map<string, string> {
-  const mainColumns = payload.columns.filter((column) => column !== "other");
-  const mainColumnIndex = new Map(mainColumns.map((column, index) => [column, index]));
-  const nodesById = new Map(payload.nodes.map((node) => [node.id, node]));
-  const effectiveIndexes = new Map(
-    payload.nodes.map((node) => [
-      node.id,
-      mainColumnIndex.get(node.column) ?? mainColumns.length
-    ])
-  );
-
-  for (let step = 0; step < payload.nodes.length; step += 1) {
-    let changed = false;
-    for (const edge of payload.edges) {
-      if (!nodesById.has(edge.source) || !nodesById.has(edge.target)) continue;
-      const sourceIndex = effectiveIndexes.get(edge.source);
-      const targetIndex = effectiveIndexes.get(edge.target);
-      if (sourceIndex === undefined || targetIndex === undefined || targetIndex >= sourceIndex) {
-        continue;
-      }
-      effectiveIndexes.set(edge.target, sourceIndex);
-      changed = true;
-    }
-    if (!changed) break;
-  }
-
-  return new Map(
-    payload.nodes.map((node) => {
-      const index = effectiveIndexes.get(node.id) ?? mainColumns.length;
-      return [node.id, mainColumns[index] ?? "other"];
-    })
-  );
 }
 
 function nodeFill(node: GraphNode): string {

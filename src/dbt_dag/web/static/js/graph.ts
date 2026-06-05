@@ -3,6 +3,7 @@ import htmx from "htmx.org";
 
 import {
   applySelectionState,
+  centerGraphNode,
   createGraph,
   getCenterAnchor,
   hasGraphNode,
@@ -56,7 +57,6 @@ async function loadGraph(): Promise<void> {
   let renderVersion = 0;
   let refreshVersion = 0;
   let currentRevision = await loadMetadataRevision();
-  let pendingFocusNodeId: string | null = null;
   let lastContainerSize = {
     width: Math.max(container.clientWidth, 0),
     height: Math.max(container.clientHeight, 0)
@@ -124,8 +124,6 @@ async function loadGraph(): Promise<void> {
     anchor: ViewAnchor | null = null
   ): Promise<void> {
     const currentVersion = (renderVersion += 1);
-    const focusNodeId = pendingFocusNodeId;
-    pendingFocusNodeId = null;
     await renderGraph(
       state.cy,
       payload,
@@ -134,7 +132,6 @@ async function loadGraph(): Promise<void> {
       state.filterMode,
       fit,
       anchor,
-      focusNodeId,
       selectNode,
       state.upstream,
       state.downstream
@@ -147,13 +144,13 @@ async function loadGraph(): Promise<void> {
     if (!hasGraphNode(state.cy, nodeId)) return;
     state.selectedNodeId = nodeId;
     state.filterMode = null;
-    pendingFocusNodeId = nodeId;
-    void renderCurrentGraph(false);
+    applyCurrentSelection();
     openInspector(nodeId);
   }
 
   function focusNode(nodeId: string): void {
     selectNode(nodeId);
+    centerGraphNode(state.cy, nodeId);
   }
 
   function clearSelection(): void {
