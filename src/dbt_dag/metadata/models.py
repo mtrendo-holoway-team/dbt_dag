@@ -16,12 +16,7 @@ class RuntimeFreshness(StrEnum):
     UNKNOWN = "unknown"
 
 
-FRESHNESS_COLORS = {
-    RuntimeFreshness.LAST_2H: "#22c55e",
-    RuntimeFreshness.LAST_24H: "#15803d",
-    RuntimeFreshness.STALE: "#eab308",
-    RuntimeFreshness.UNKNOWN: "#a1a1aa",
-}
+MODEL_BORDER_COLOR = "#075985"
 
 
 @dataclass(frozen=True)
@@ -60,5 +55,5 @@ def empty_node_runtime_metadata() -> NodeRuntimeMetadata:
         last_updated_source=RuntimeDataSource.NONE,
         freshness=RuntimeFreshness.UNKNOWN,
         border_width_px=1,
-        border_color=FRESHNESS_COLORS[RuntimeFreshness.UNKNOWN],
+        border_color=MODEL_BORDER_COLOR,
     )

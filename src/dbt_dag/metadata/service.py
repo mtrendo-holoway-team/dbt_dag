@@ -6,7 +6,7 @@ from dbt_dag.manifest.models import DbtManifest
 from dbt_dag.metadata.artifacts import RunResultsArtifactReader
 from dbt_dag.metadata.models import empty_node_runtime_metadata
 from dbt_dag.metadata.models import empty_partial_metadata
-from dbt_dag.metadata.models import FRESHNESS_COLORS
+from dbt_dag.metadata.models import MODEL_BORDER_COLOR
 from dbt_dag.metadata.models import NodeRuntimeMetadata
 from dbt_dag.metadata.models import PartialRuntimeMetadata
 from dbt_dag.metadata.models import RuntimeDataSource
@@ -111,7 +111,7 @@ def _decorate_single_metadata(
             last_updated_source=metadata.last_updated_source,
             freshness=freshness,
             border_width_px=_border_width(metadata.execution_time_seconds, max_duration),
-            border_color=FRESHNESS_COLORS[freshness],
+            border_color=MODEL_BORDER_COLOR,
         )
         if metadata != empty_partial_metadata()
         else empty

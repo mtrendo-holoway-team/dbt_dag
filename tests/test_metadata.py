@@ -11,6 +11,7 @@ from dbt_dag.manifest.parser import load_manifest
 from dbt_dag.metadata import service
 from dbt_dag.metadata.artifacts import RunResultsArtifactReader
 from dbt_dag.metadata.models import PartialRuntimeMetadata
+from dbt_dag.metadata.models import MODEL_BORDER_COLOR
 from dbt_dag.metadata.models import RuntimeDataSource
 from dbt_dag.metadata.models import RuntimeFreshness
 from dbt_dag.metadata.service import RuntimeMetadataService
@@ -116,7 +117,9 @@ def test_runtime_service_decorates_freshness_and_logarithmic_width(
     assert metadata["model.demo.fct_orders"].freshness == RuntimeFreshness.LAST_24H
     assert metadata["model.demo.fct_orders"].border_width_px == 6
     assert 1 < metadata["model.demo.stg_orders"].border_width_px < 6
+    assert metadata["model.demo.stg_orders"].border_color == MODEL_BORDER_COLOR
     assert metadata["source.demo.raw.orders"].border_width_px == 1
+    assert metadata["source.demo.raw.orders"].border_color == MODEL_BORDER_COLOR
     assert metadata["source.demo.raw.orders"].freshness == RuntimeFreshness.UNKNOWN
 
 

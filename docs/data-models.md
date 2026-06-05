@@ -5,7 +5,7 @@
 - `DbtProjectPaths`: resolved dbt project directory, derived `target/manifest.json` path, and profiles directory.
 - `DbtRuntimeProfile`: resolved dbt profile name, active target, adapter kind, and project paths.
 - `DbtManifestNode`: normalized dbt resource used by the graph and inspectors.
-- `NodeRuntimeMetadata`: per-node runtime metadata with execution time, update timestamp, source labels, freshness, border width, and border color.
+- `NodeRuntimeMetadata`: per-node runtime metadata with execution time, update timestamp, source labels, freshness, logarithmic border width from `1..6` by runtime duration, and fixed `sky-800` border color.
 - `GraphPayload`: graph nodes, including package name, node-type badge letter, runtime metadata, graph edges, rounded group panels with member node ids, columns, and project summary.
 - `GraphStateSnapshot`: thread-safe in-memory graph, manifest, runtime metadata, revision, and refresh timestamp.
 - `NodeTaskDTO`: persisted dbt action task state for a node.

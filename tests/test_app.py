@@ -1,6 +1,7 @@
 import logging
 from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import ANY
 from unittest.mock import Mock
 
 from _pytest.logging import LogCaptureFixture
@@ -88,6 +89,12 @@ def test_build_app_state_reports_startup_steps(
     state = build_app_state(settings, progress=steps.append)
 
     assert isinstance(state, AppState)
+    graph_state_store = build_app_state.__globals__["GraphStateStore"]
+    graph_state_store.assert_called_once_with(
+        paths.manifest_path,
+        ANY,
+        include_warehouse_on_init=True,
+    )
     assert steps == [
         "Resolving dbt project paths",
         f"Resolving active dbt profile for project {dbt_project.name}",
