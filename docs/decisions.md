@@ -101,7 +101,8 @@
 ## ADR-0013 ELK DAG Layout Engine
 
 - Created: 2026-06-03
-- Status: active
+- Status: superseded
+- Superseded_by: ADR-0018
 - Context: The DAG view needs stable left-to-right dependency layout, labeled rectangular nodes, and fewer edge crossings than the Sigma force-style renderer provides.
 - Decision: Use ELK.js layered layout to order DAG nodes, then render the result with first-party SVG and HTML.
 - Consequences: Frontend graph rendering depends on `elkjs`; the backend graph payload remains the source of node and edge data, and visual swimlanes are derived in the browser.
@@ -137,3 +138,12 @@
 - Context: Polling individual inspector blocks caused visible blinking and refreshed static controls that did not depend on changing metadata.
 - Decision: Keep the inspector shell stable after node selection, reload only metadata-dependent blocks when the shared metadata revision changes, and leave static blocks such as actions out of automatic refresh.
 - Consequences: Inspector updates no longer swap the whole sidebar during background refresh, metadata-driven blocks can show lightweight in-place loading state, and block refresh responsibility stays centralized in the graph client instead of block-level polling.
+
+## ADR-0018 Cytoscape fCoSE DAG Renderer
+
+- Created: 2026-06-05
+- Status: active
+- Supersedes: ADR-0013
+- Context: The DAG view needs directed arrows, compound source/product grouping, and interactive browser-native pan/zoom without maintaining a custom SVG renderer.
+- Decision: Use Cytoscape.js with the fCoSE compound layout and constrained left-to-right placement bias for the graph view.
+- Consequences: Frontend graph rendering depends on `cytoscape`, `cytoscape-fcose`, and `cytoscape-layout-utilities`; source and product compounds continue to come from backend `GraphPayload.groups`, and the layout favors DAG flow without requiring exact layered ordering.

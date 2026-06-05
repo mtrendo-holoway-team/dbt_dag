@@ -1,11 +1,11 @@
 # dbt DAG Visualizer
 
-Local dbt project visualizer for `manifest.json` with a Litestar backend, htmx UI, Sigma.js graph rendering, and SQLite persistence.
+Local dbt project visualizer for `manifest.json` with a Litestar backend, htmx UI, Cytoscape graph rendering, and SQLite persistence.
 
 ## Stack
 
 - Backend: Litestar
-- Frontend: htmx, Sigma.js, Graphology, Vite, Tailwind 4
+- Frontend: htmx, Cytoscape.js, fCoSE, Vite, Tailwind 4
 - Storage: SQLite, SQLAlchemy, Alembic
 - Runtime: dbt project + `profiles.yml`
 

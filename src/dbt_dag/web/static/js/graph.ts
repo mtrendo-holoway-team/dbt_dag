@@ -1,17 +1,21 @@
 import hotkeys from "hotkeys-js";
 import htmx from "htmx.org";
 
-import { layoutGraph } from "./graph_layout";
-import { getCenterAnchor, renderGraph } from "./graph_svg";
+import {
+  applySelectionState,
+  createGraph,
+  getCenterAnchor,
+  hasGraphNode,
+  nextKeyboardNodeId,
+  renderGraph
+} from "./graph_cytoscape";
 import { refreshInspectorMetadataBlocks } from "./inspectors";
 import type {
   FilterMode,
   GraphNode,
   GraphPayload,
-  LayoutState,
   MetadataRevision,
-  PositionedNode,
-  ViewAnchor,
+  ViewAnchor
 } from "./graph_types";
 
 declare global {
@@ -34,22 +38,22 @@ async function loadGraph(): Promise<void> {
   const container = document.getElementById("graph-root");
   if (!container) return;
 
+  prepareContainer(container);
   const response = await fetch("/api/graph");
   let payload = (await response.json()) as GraphPayload;
   const activePackages = new Set(
     graphPackages(payload.nodes).filter((packageName) => !defaultHiddenPackages.has(packageName))
   );
   const { upstream, downstream } = buildAdjacency(payload);
-  const state: LayoutState = {
-    layout: await layoutGraph(payload, activePackages),
+  const state = {
+    cy: createGraph(container),
     upstream,
     downstream,
     activePackages,
-    selectedNodeId: null,
-    filterMode: null
+    selectedNodeId: null as string | null,
+    filterMode: null as FilterMode | null
   };
   let renderVersion = 0;
-  let layoutVersion = 0;
   let refreshVersion = 0;
   let currentRevision = await loadMetadataRevision();
   let pendingFocusNodeId: string | null = null;
@@ -61,6 +65,7 @@ async function loadGraph(): Promise<void> {
   window.dbtDagSelectNode = selectNode;
   window.dbtDagFocusNode = focusNode;
   window.dbtDagClearSelection = clearSelection;
+
   const packageChangeHandler = async (packageName: string, enabled: boolean) => {
     const nextPackages = new Set(state.activePackages);
     if (enabled) {
@@ -68,35 +73,15 @@ async function loadGraph(): Promise<void> {
     } else {
       nextPackages.delete(packageName);
     }
-    const anchor = getCenterAnchor(container, state.layout, visibleNodeIds(payload.nodes, nextPackages));
-    const currentLayoutVersion = (layoutVersion += 1);
-    const nextLayout = await layoutGraph(payload, nextPackages);
-    if (currentLayoutVersion !== layoutVersion) return;
+    const anchor = getCenterAnchor(state.cy, visibleNodeIds(payload.nodes, nextPackages));
     state.activePackages = nextPackages;
-    state.layout = nextLayout;
-    if (state.selectedNodeId && !state.layout.nodes.has(state.selectedNodeId)) {
-      state.selectedNodeId = null;
-      state.filterMode = null;
-    }
-    renderCurrentGraph(false, anchor);
+    clearHiddenSelection();
+    await renderCurrentGraph(false, anchor);
   };
+
   renderPackageFilters(payload.nodes, activePackages, packageChangeHandler);
-  renderCurrentGraph(true);
-  const resizeObserver = new ResizeObserver(() => {
-    const nextSize = {
-      width: Math.max(container.clientWidth, 0),
-      height: Math.max(container.clientHeight, 0)
-    };
-    if (
-      nextSize.width === lastContainerSize.width &&
-      nextSize.height === lastContainerSize.height
-    ) {
-      return;
-    }
-    lastContainerSize = nextSize;
-    renderCurrentGraph(!state.selectedNodeId);
-  });
-  resizeObserver.observe(container);
+  await renderCurrentGraph(true);
+  observeResize(container, state);
   window.setInterval(() => {
     void refreshIfNeeded();
   }, 5000);
@@ -110,7 +95,7 @@ async function loadGraph(): Promise<void> {
     }
     if (!state.selectedNodeId) return;
     state.filterMode = mode;
-    renderCurrentGraph(false);
+    applyCurrentSelection();
   });
 
   hotkeys("esc,left,right,up,down", (event, handler) => {
@@ -122,39 +107,48 @@ async function loadGraph(): Promise<void> {
       return;
     }
     if (!state.selectedNodeId) return;
-    const nextNodeId = nextKeyboardNodeId(handler.key, state);
+    const nextNodeId = nextKeyboardNodeId(
+      handler.key,
+      state.cy,
+      state.selectedNodeId,
+      state.upstream,
+      state.downstream
+    );
     if (!nextNodeId) return;
     event.preventDefault();
     selectNode(nextNodeId);
   });
 
-  function renderCurrentGraph(fit = false, anchor: ViewAnchor | null = null): void {
+  async function renderCurrentGraph(
+    fit = false,
+    anchor: ViewAnchor | null = null
+  ): Promise<void> {
     const currentVersion = (renderVersion += 1);
-    const relatedNodes = state.selectedNodeId
-      ? relatedNodeIds(state.selectedNodeId, state.filterMode, state.upstream, state.downstream)
-      : null;
-    if (currentVersion !== renderVersion) return;
     const focusNodeId = pendingFocusNodeId;
     pendingFocusNodeId = null;
-    renderGraph(
-      container,
-      state.layout,
-      relatedNodes,
+    await renderGraph(
+      state.cy,
+      payload,
+      state.activePackages,
       state.selectedNodeId,
       state.filterMode,
-      selectNode,
       fit,
       anchor,
-      focusNodeId
+      focusNodeId,
+      selectNode,
+      state.upstream,
+      state.downstream
     );
+    if (currentVersion !== renderVersion) return;
+    applyCurrentSelection();
   }
 
   function selectNode(nodeId: string): void {
-    if (!state.layout.nodes.has(nodeId)) return;
+    if (!hasGraphNode(state.cy, nodeId)) return;
     state.selectedNodeId = nodeId;
     state.filterMode = null;
     pendingFocusNodeId = nodeId;
-    renderCurrentGraph(false);
+    void renderCurrentGraph(false);
     openInspector(nodeId);
   }
 
@@ -165,8 +159,25 @@ async function loadGraph(): Promise<void> {
   function clearSelection(): void {
     state.selectedNodeId = null;
     state.filterMode = null;
-    renderCurrentGraph(false);
+    applyCurrentSelection();
     openProjectInspector();
+  }
+
+  function applyCurrentSelection(): void {
+    applySelectionState(
+      state.cy,
+      state.selectedNodeId,
+      state.filterMode,
+      state.upstream,
+      state.downstream
+    );
+  }
+
+  function clearHiddenSelection(): void {
+    if (state.selectedNodeId && !visibleNodeIds(payload.nodes, state.activePackages).has(state.selectedNodeId)) {
+      state.selectedNodeId = null;
+      state.filterMode = null;
+    }
   }
 
   async function refreshIfNeeded(): Promise<void> {
@@ -181,8 +192,7 @@ async function loadGraph(): Promise<void> {
     const nextResponse = await fetch("/api/graph");
     const nextPayload = (await nextResponse.json()) as GraphPayload;
     const nextPackages = reconcileActivePackages(payload, nextPayload, state.activePackages);
-    const anchor = getCenterAnchor(container, state.layout, visibleNodeIds(payload.nodes, nextPackages));
-    const nextLayout = await layoutGraph(nextPayload, nextPackages);
+    const anchor = getCenterAnchor(state.cy, visibleNodeIds(nextPayload.nodes, nextPackages));
     if (currentRefresh !== refreshVersion) return;
 
     payload = nextPayload;
@@ -190,76 +200,46 @@ async function loadGraph(): Promise<void> {
     state.upstream = adjacency.upstream;
     state.downstream = adjacency.downstream;
     state.activePackages = nextPackages;
-    state.layout = nextLayout;
-    if (state.selectedNodeId && !state.layout.nodes.has(state.selectedNodeId)) {
-      state.selectedNodeId = null;
-      state.filterMode = null;
-    }
+    clearHiddenSelection();
     renderPackageFilters(payload.nodes, state.activePackages, packageChangeHandler);
-    renderCurrentGraph(false, anchor);
+    await renderCurrentGraph(false, anchor);
     if (state.selectedNodeId) {
       refreshInspectorMetadataBlocks();
     } else {
       openProjectInspector();
     }
   }
-}
 
-function nextKeyboardNodeId(direction: string, state: LayoutState): string | null {
-  const currentNodeId = state.selectedNodeId;
-  if (!currentNodeId) return null;
-
-  if (direction === "right") {
-    return sortedRelatedNodes(state.downstream.get(currentNodeId), state.layout)[0]?.id ?? null;
+  function observeResize(
+    containerElement: HTMLElement,
+    graphState: { cy: ReturnType<typeof createGraph>; selectedNodeId: string | null }
+  ): void {
+    const resizeObserver = new ResizeObserver(() => {
+      const nextSize = {
+        width: Math.max(containerElement.clientWidth, 0),
+        height: Math.max(containerElement.clientHeight, 0)
+      };
+      if (
+        nextSize.width === lastContainerSize.width &&
+        nextSize.height === lastContainerSize.height
+      ) {
+        return;
+      }
+      lastContainerSize = nextSize;
+      graphState.cy.resize();
+      if (!graphState.selectedNodeId) {
+        graphState.cy.fit(undefined, 40);
+      }
+    });
+    resizeObserver.observe(containerElement);
   }
-
-  const primaryParentId = selectPrimaryParent(currentNodeId, state);
-  if (!primaryParentId) return null;
-
-  if (direction === "left") {
-    return primaryParentId;
-  }
-
-  const siblings = sortedRelatedNodes(state.downstream.get(primaryParentId), state.layout);
-  const currentIndex = siblings.findIndex((node) => node.id === currentNodeId);
-  if (currentIndex < 0) return null;
-  if (direction === "up") {
-    return siblings[currentIndex - 1]?.id ?? null;
-  }
-  if (direction === "down") {
-    return siblings[currentIndex + 1]?.id ?? null;
-  }
-  return null;
 }
 
-function selectPrimaryParent(nodeId: string, state: LayoutState): string | null {
-  const currentNode = state.layout.nodes.get(nodeId);
-  if (!currentNode) return null;
-  return (
-    sortedRelatedNodes(state.upstream.get(nodeId), state.layout).sort(
-      (left, right) =>
-        horizontalDistance(currentNode, left) - horizontalDistance(currentNode, right) ||
-        verticalDistance(currentNode, left) - verticalDistance(currentNode, right)
-    )[0]?.id ?? null
-  );
-}
-
-function sortedRelatedNodes(
-  nodeIds: Set<string> | undefined,
-  layout: LayoutState["layout"]
-): PositionedNode[] {
-  return [...(nodeIds ?? new Set<string>())]
-    .map((nodeId) => layout.nodes.get(nodeId))
-    .filter((node): node is PositionedNode => node !== undefined)
-    .sort((left, right) => left.y - right.y || left.x - right.x);
-}
-
-function horizontalDistance(currentNode: PositionedNode, candidateNode: PositionedNode): number {
-  return Math.abs(candidateNode.x - currentNode.x);
-}
-
-function verticalDistance(currentNode: PositionedNode, candidateNode: PositionedNode): number {
-  return Math.abs(candidateNode.y - currentNode.y);
+function prepareContainer(container: HTMLElement): void {
+  container.style.position = "relative";
+  container.style.overflow = "hidden";
+  container.style.touchAction = "none";
+  container.style.background = "#fafafa";
 }
 
 function isEditableTarget(target: EventTarget | null): boolean {
@@ -306,7 +286,7 @@ function reconcileActivePackages(
 ): Set<string> {
   const previousPackages = new Set(graphPackages(previousPayload.nodes));
   const nextPackages = graphPackages(nextPayload.nodes);
-  const result = new Set([...activePackages].filter((packageName) => nextPackages.includes(packageName)));
+  const result = new Set([...activePackages].filter((name) => nextPackages.includes(name)));
   for (const packageName of nextPackages) {
     if (!previousPackages.has(packageName) && !defaultHiddenPackages.has(packageName)) {
       result.add(packageName);
@@ -342,34 +322,6 @@ function renderPackageFilters(
       return label;
     })
   );
-}
-
-function relatedNodeIds(
-  selectedNodeId: string,
-  mode: FilterMode | null,
-  upstream: Map<string, Set<string>>,
-  downstream: Map<string, Set<string>>
-): Set<string> {
-  if (mode === "upstream") return walkGraph(selectedNodeId, upstream);
-  if (mode === "downstream") return walkGraph(selectedNodeId, downstream);
-  return new Set([
-    ...walkGraph(selectedNodeId, upstream),
-    ...walkGraph(selectedNodeId, downstream)
-  ]);
-}
-
-function walkGraph(startNodeId: string, adjacency: Map<string, Set<string>>): Set<string> {
-  const visited = new Set<string>([startNodeId]);
-  const queue = [...(adjacency.get(startNodeId) ?? [])];
-
-  while (queue.length > 0) {
-    const nodeId = queue.shift();
-    if (!nodeId || visited.has(nodeId)) continue;
-    visited.add(nodeId);
-    queue.push(...(adjacency.get(nodeId) ?? []));
-  }
-
-  return visited;
 }
 
 function openInspector(nodeId: string): void {

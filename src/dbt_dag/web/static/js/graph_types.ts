@@ -15,6 +15,8 @@ export type GraphNode = {
   column: string;
   resource_type: string;
   package_name: string;
+  description: string;
+  indicators: string[];
   runtime: GraphNodeRuntime;
 };
 
@@ -36,15 +38,6 @@ export type ProjectSummary = {
   tests_count: number;
 };
 
-export type GraphEdgePoint = {
-  x: number;
-  y: number;
-};
-
-export type RoutedGraphEdge = GraphEdge & {
-  points: GraphEdgePoint[];
-};
-
 export type GraphPayload = {
   columns: string[];
   nodes: GraphNode[];
@@ -58,49 +51,10 @@ export type MetadataRevision = {
   refreshed_at: string;
 };
 
-export type PositionedNode = GraphNode & {
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-  effectiveColumn: string;
-};
-
 export type FilterMode = "upstream" | "downstream" | "reset";
-
-export type GraphLayout = {
-  nodes: Map<string, PositionedNode>;
-  edges: RoutedGraphEdge[];
-  groups: PositionedGroup[];
-  width: number;
-  height: number;
-};
-
-export type PositionedGroup = GraphGroup & {
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-};
 
 export type ViewAnchor = {
   nodeId: string;
   screenX: number;
   screenY: number;
-};
-
-export type ViewBounds = {
-  minX: number;
-  minY: number;
-  maxX: number;
-  maxY: number;
-};
-
-export type LayoutState = {
-  layout: GraphLayout;
-  upstream: Map<string, Set<string>>;
-  downstream: Map<string, Set<string>>;
-  activePackages: Set<string>;
-  selectedNodeId: string | null;
-  filterMode: FilterMode | null;
 };
