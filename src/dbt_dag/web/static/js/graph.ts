@@ -7,9 +7,9 @@ import {
   createGraph,
   getCenterAnchor,
   hasGraphNode,
-  nextKeyboardNodeId,
   renderGraph
 } from "./graph_cytoscape";
+import { createRelativeNavigation } from "./graph_relative_navigation";
 import { refreshInspectorMetadataBlocks } from "./inspectors";
 import type {
   FilterMode,
@@ -54,6 +54,7 @@ async function loadGraph(): Promise<void> {
     selectedNodeId: null as string | null,
     filterMode: null as FilterMode | null
   };
+  const relativeNavigation = createRelativeNavigation(container, state.cy, focusNode);
   let renderVersion = 0;
   let refreshVersion = 0;
   let currentRevision = await loadMetadataRevision();
@@ -98,25 +99,13 @@ async function loadGraph(): Promise<void> {
     applyCurrentSelection();
   });
 
-  hotkeys("esc,left,right,up,down", (event, handler) => {
+  hotkeys("esc", (event, handler) => {
     if (isEditableTarget(event.target)) return;
     if (handler.key === "esc") {
       if (!state.selectedNodeId) return;
       event.preventDefault();
       clearSelection();
-      return;
     }
-    if (!state.selectedNodeId) return;
-    const nextNodeId = nextKeyboardNodeId(
-      handler.key,
-      state.cy,
-      state.selectedNodeId,
-      state.upstream,
-      state.downstream
-    );
-    if (!nextNodeId) return;
-    event.preventDefault();
-    selectNode(nextNodeId);
   });
 
   async function renderCurrentGraph(
@@ -165,6 +154,12 @@ async function loadGraph(): Promise<void> {
       state.cy,
       state.selectedNodeId,
       state.filterMode,
+      state.upstream,
+      state.downstream
+    );
+    relativeNavigation.render(
+      state.selectedNodeId,
+      visibleNodeIds(payload.nodes, state.activePackages),
       state.upstream,
       state.downstream
     );

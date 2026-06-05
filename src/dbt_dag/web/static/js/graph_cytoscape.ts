@@ -1,7 +1,6 @@
 import cytoscape, {
   type Core,
   type ElementDefinition,
-  type NodeSingular,
   type Stylesheet
 } from "cytoscape";
 import fcose from "cytoscape-fcose";
@@ -150,29 +149,6 @@ export function getCenterAnchor(cy: Core, allowedNodeIds: Set<string>): ViewAnch
 }
 export function hasGraphNode(cy: Core, nodeId: string): boolean {
   return !cy.getElementById(nodeId).empty();
-}
-export function nextKeyboardNodeId(
-  direction: string,
-  cy: Core,
-  selectedNodeId: string,
-  upstream: Map<string, Set<string>>,
-  downstream: Map<string, Set<string>>
-): string | null {
-  if (direction === "right") {
-    return sortedRelatedNodes(cy, downstream.get(selectedNodeId))[0]?.id() ?? null;
-  }
-
-  const primaryParentId = selectPrimaryParent(cy, selectedNodeId, upstream);
-  if (!primaryParentId) return null;
-
-  if (direction === "left") return primaryParentId;
-
-  const siblings = sortedRelatedNodes(cy, downstream.get(primaryParentId));
-  const currentIndex = siblings.findIndex((node) => node.id() === selectedNodeId);
-  if (currentIndex < 0) return null;
-  if (direction === "up") return siblings[currentIndex - 1]?.id() ?? null;
-  if (direction === "down") return siblings[currentIndex + 1]?.id() ?? null;
-  return null;
 }
 
 function runFcoseLayout(
@@ -493,37 +469,4 @@ function walkGraph(startNodeId: string, adjacency: Map<string, Set<string>>): Se
     queue.push(...(adjacency.get(nodeId) ?? []));
   }
   return visited;
-}
-
-function selectPrimaryParent(
-  cy: Core,
-  nodeId: string,
-  upstream: Map<string, Set<string>>
-): string | null {
-  const currentNode = cy.getElementById(nodeId);
-  if (currentNode.empty()) return null;
-  const currentPosition = currentNode.position();
-  return (
-    sortedRelatedNodes(cy, upstream.get(nodeId)).sort((left, right) => {
-      const leftPosition = left.position();
-      const rightPosition = right.position();
-      return (
-        Math.abs(leftPosition.x - currentPosition.x) -
-          Math.abs(rightPosition.x - currentPosition.x) ||
-        Math.abs(leftPosition.y - currentPosition.y) -
-          Math.abs(rightPosition.y - currentPosition.y)
-      );
-    })[0]?.id() ?? null
-  );
-}
-
-function sortedRelatedNodes(cy: Core, nodeIds: Set<string> | undefined): NodeSingular[] {
-  return [...(nodeIds ?? new Set<string>())]
-    .map((nodeId) => cy.getElementById(nodeId))
-    .filter((node): node is NodeSingular => !node.empty() && node.isNode())
-    .sort((left, right) => {
-      const leftPosition = left.position();
-      const rightPosition = right.position();
-      return leftPosition.y - rightPosition.y || leftPosition.x - rightPosition.x;
-    });
 }
