@@ -109,7 +109,7 @@ export function applySelectionState(
   downstream: Map<string, Set<string>>
 ): void {
   const relatedNodes = selectedNodeId
-    ? relatedNodeIds(selectedNodeId, filterMode, upstream, downstream)
+    ? graphRelatedNodeIds(selectedNodeId, filterMode, upstream, downstream)
     : null;
   cy.batch(() => {
     cy.elements().removeClass("selected related dimmed");
@@ -129,6 +129,41 @@ export function applySelectionState(
       }
     });
   });
+}
+
+export function applyIsolationState(cy: Core, visibleNodeIds: Set<string> | null): void {
+  cy.batch(() => {
+    cy.elements().removeClass("hidden");
+    if (!visibleNodeIds) return;
+
+    cy.nodes("[kind = 'node']").forEach((node) => {
+      if (!visibleNodeIds.has(node.id())) {
+        node.addClass("hidden");
+      }
+    });
+    cy.nodes("[kind = 'group']").forEach((group) => {
+      const groupNodes = group
+        .children("[kind = 'node']")
+        .filter((node): node is NodeSingular => node.isNode());
+      const hasVisibleChild = groupNodes.some((node) => visibleNodeIds.has(node.id()));
+      if (!hasVisibleChild) {
+        group.addClass("hidden");
+      }
+    });
+    cy.edges().forEach((edge) => {
+      if (!visibleNodeIds.has(edge.source().id()) || !visibleNodeIds.has(edge.target().id())) {
+        edge.addClass("hidden");
+      }
+    });
+  });
+}
+
+export function frameGraphNodes(cy: Core, nodeIds: Iterable<string>): void {
+  const nodes = [...nodeIds]
+    .map((nodeId) => cy.getElementById(nodeId))
+    .filter((node) => !node.empty() && node.isNode());
+  if (nodes.length === 0) return;
+  cy.fit(cy.collection(nodes), 80);
 }
 export function getCenterAnchor(cy: Core, allowedNodeIds: Set<string>): ViewAnchor | null {
   const center = {
@@ -302,6 +337,7 @@ function graphStyle(): Stylesheet[] {
       selector: "edge.related",
       style: { width: 2 }
     },
+    { selector: ".hidden", style: { display: "none" } },
     { selector: ".dimmed", style: { opacity: 0.24, "text-opacity": 0.72 } }
   ];
 }
@@ -445,7 +481,7 @@ function nodeFill(node: GraphNode): string {
   return laneColors[node.column] ?? laneColors.other;
 }
 
-function relatedNodeIds(
+export function graphRelatedNodeIds(
   selectedNodeId: string,
   mode: FilterMode | null,
   upstream: Map<string, Set<string>>,
@@ -456,6 +492,18 @@ function relatedNodeIds(
   return new Set([
     ...walkGraph(selectedNodeId, upstream),
     ...walkGraph(selectedNodeId, downstream)
+  ]);
+}
+
+export function directlyRelatedNodeIds(
+  selectedNodeId: string,
+  upstream: Map<string, Set<string>>,
+  downstream: Map<string, Set<string>>
+): Set<string> {
+  return new Set([
+    selectedNodeId,
+    ...(upstream.get(selectedNodeId) ?? []),
+    ...(downstream.get(selectedNodeId) ?? [])
   ]);
 }
 

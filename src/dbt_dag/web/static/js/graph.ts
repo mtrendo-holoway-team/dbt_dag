@@ -2,9 +2,13 @@ import hotkeys from "hotkeys-js";
 import htmx from "htmx.org";
 
 import {
+  applyIsolationState,
   applySelectionState,
   centerGraphNode,
   createGraph,
+  directlyRelatedNodeIds,
+  frameGraphNodes,
+  graphRelatedNodeIds,
   getCenterAnchor,
   hasGraphNode,
   renderGraph
@@ -52,7 +56,8 @@ async function loadGraph(): Promise<void> {
     downstream,
     activePackages,
     selectedNodeId: null as string | null,
-    filterMode: null as FilterMode | null
+    filterMode: null as FilterMode | null,
+    isolatedNodeIds: null as Set<string> | null
   };
   const relativeNavigation = createRelativeNavigation(container, state.cy, focusNode);
   let renderVersion = 0;
@@ -102,9 +107,43 @@ async function loadGraph(): Promise<void> {
   hotkeys("esc", (event, handler) => {
     if (isEditableTarget(event.target)) return;
     if (handler.key === "esc") {
-      if (!state.selectedNodeId) return;
       event.preventDefault();
+      if (state.isolatedNodeIds) {
+        clearIsolation();
+        return;
+      }
+      if (!state.selectedNodeId) return;
       clearSelection();
+    }
+  });
+  hotkeys("f,z,i", (event, handler) => {
+    if (isEditableTarget(event.target) || !state.selectedNodeId) return;
+
+    if (handler.key === "f") {
+      event.preventDefault();
+      frameGraphNodes(
+        state.cy,
+        graphRelatedNodeIds(state.selectedNodeId, null, state.upstream, state.downstream)
+      );
+      return;
+    }
+
+    if (handler.key === "z") {
+      event.preventDefault();
+      frameGraphNodes(
+        state.cy,
+        directlyRelatedNodeIds(state.selectedNodeId, state.upstream, state.downstream)
+      );
+      return;
+    }
+
+    if (handler.key === "i") {
+      event.preventDefault();
+      if (state.isolatedNodeIds) {
+        clearIsolation();
+        return;
+      }
+      isolateSelection();
     }
   });
 
@@ -145,11 +184,13 @@ async function loadGraph(): Promise<void> {
   function clearSelection(): void {
     state.selectedNodeId = null;
     state.filterMode = null;
+    state.isolatedNodeIds = null;
     applyCurrentSelection();
     openProjectInspector();
   }
 
   function applyCurrentSelection(): void {
+    applyIsolationState(state.cy, state.isolatedNodeIds);
     applySelectionState(
       state.cy,
       state.selectedNodeId,
@@ -159,17 +200,42 @@ async function loadGraph(): Promise<void> {
     );
     relativeNavigation.render(
       state.selectedNodeId,
-      visibleNodeIds(payload.nodes, state.activePackages),
+      currentVisibleNodeIds(),
       state.upstream,
       state.downstream
     );
+  }
+
+  function isolateSelection(): void {
+    if (!state.selectedNodeId) return;
+    state.isolatedNodeIds = graphRelatedNodeIds(
+      state.selectedNodeId,
+      null,
+      state.upstream,
+      state.downstream
+    );
+    applyCurrentSelection();
+    frameGraphNodes(state.cy, state.isolatedNodeIds);
+  }
+
+  function clearIsolation(): void {
+    if (!state.isolatedNodeIds) return;
+    state.isolatedNodeIds = null;
+    applyCurrentSelection();
   }
 
   function clearHiddenSelection(): void {
     if (state.selectedNodeId && !visibleNodeIds(payload.nodes, state.activePackages).has(state.selectedNodeId)) {
       state.selectedNodeId = null;
       state.filterMode = null;
+      state.isolatedNodeIds = null;
     }
+  }
+
+  function currentVisibleNodeIds(): Set<string> {
+    const activeNodeIds = visibleNodeIds(payload.nodes, state.activePackages);
+    if (!state.isolatedNodeIds) return activeNodeIds;
+    return new Set([...activeNodeIds].filter((nodeId) => state.isolatedNodeIds?.has(nodeId)));
   }
 
   async function refreshIfNeeded(): Promise<void> {
