@@ -34,6 +34,7 @@ class MetadataWatcher:
     def start(self) -> None:
         if self._thread is not None and self._thread.is_alive():
             return
+        self._refresh_event.set()
         self._thread = threading.Thread(
             target=self._run,
             name="metadata-watcher",

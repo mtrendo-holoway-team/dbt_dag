@@ -39,10 +39,10 @@ type LayoutConstraints = {
   relativePlacementConstraint?: RelativePlacementConstraint[];
 };
 
-const nodeHeight = 42;
+const nodeHeight = 32;
 const minNodeWidth = 96;
 const maxNodeWidth = 360;
-const nodeHorizontalPadding = 34;
+const nodeHorizontalPadding = 15;
 const averageLabelCharacterWidth = 7;
 const nodeStatusIconWidth = 28;
 const directionGap = 130;

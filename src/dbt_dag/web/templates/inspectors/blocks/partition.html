@@ -9,8 +9,6 @@
             <p class="text-xs text-zinc-500">Медианное количество строк: {{ median }}</p>
             <p class="text-xs {{ status_class }}">{{ status_label }}</p>
             {% if calendar.last_error %}<p class="text-xs text-rose-400">{{ calendar.last_error }}</p>{% endif %}
-        {% else %}
-            <p class="text-xs text-zinc-500">Данные о партициях недоступны</p>
         {% endif %}
     </div>
     {% if not calendar %}

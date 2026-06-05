@@ -86,7 +86,7 @@ def build_app_state(
     graph_store = GraphStateStore(
         paths.manifest_path,
         metadata_service,
-        include_warehouse_on_init=True,
+        include_warehouse_on_init=False,
     )
     _report_progress(progress, f"Preparing background watcher for project {paths.project_dir.name}")
     metadata_watcher = MetadataWatcher(graph_store)

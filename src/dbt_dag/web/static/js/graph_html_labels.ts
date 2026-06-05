@@ -57,9 +57,9 @@ export function createGraphHtmlLabels(container: HTMLElement, cy: Core): GraphHt
 
 function createLabel(data: NodeData): HTMLDivElement {
   const label = document.createElement("div");
-  label.className = "absolute flex items-center justify-center gap-2 px-4 text-[13px] font-medium";
+  label.className = "absolute flex items-center justify-center gap-1 px-1 text-[13px] font-medium";
   label.innerHTML = `
-    <span class="shrink-0 font-semibold text-zinc-900">${escapeHtml(data.typeBadge)}</span>
+    <span class="shrink-0 font-semibold text-zinc-100 bg-zinc-500 size-3 flex items-center justify-center rounded text-[10px] font-mono">${escapeHtml(data.typeBadge)}</span>
     <span class="truncate text-zinc-900">${escapeHtml(data.label)}</span>
     <span class="shrink-0">${statusIconSvg(data.statusIconName, data.statusColorHex)}</span>
   `;
@@ -97,7 +97,7 @@ function updateLabel(
 
 function statusIconSvg(iconName: string, colorHex: string): string {
   return `
-    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke-width="1.8" stroke="${colorHex}">
+    <svg xmlns="http://www.w3.org/2000/svg" class="size-5" fill="none" viewBox="0 0 24 24" stroke-width="2.0" stroke="${colorHex}">
       <path stroke-linecap="round" stroke-linejoin="round" d="${iconPath(iconName)}" />
     </svg>
   `;
