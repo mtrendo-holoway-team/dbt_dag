@@ -1,3 +1,4 @@
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, cast
 
@@ -34,6 +35,24 @@ def _state(request: Request[Any, Any, Any]) -> AppState:
 
 def _html(content: str) -> Response[str]:
     return Response(content=content, media_type=MediaType.HTML)
+
+
+@dataclass(frozen=True)
+class _SearchFieldMatch:
+    positions: list[int]
+    score: tuple[int, int, int]
+
+
+@dataclass(frozen=True)
+class _SearchCandidate:
+    node_id: str
+    label: str
+    resource_type: str
+    subtitle: str
+    label_matches: list[int]
+    type_matches: list[int]
+    subtitle_matches: list[int]
+    score: tuple[int, int, int, str]
 
 
 class PagesController(Controller):
@@ -214,19 +233,28 @@ class PagesController(Controller):
         )
 
     @get("/search")
-    async def search(self, request: Request[Any, Any, Any], q: str = "") -> list[dict[str, str]]:
+    async def search(self, request: Request[Any, Any, Any], q: str = "") -> list[dict[str, Any]]:
         query = q.removeprefix("/").lower()
         if not query:
             return []
-        matches = []
+        matches: list[_SearchCandidate] = []
         for node in _state(request).graph_store.snapshot().manifest.graph_nodes().values():
-            if query in node.name.lower() or query in node.unique_id.lower():
-                matches.append(
-                    {"id": node.unique_id, "label": node.name, "type": node.resource_type}
-                )
-            if len(matches) >= 20:
-                break
-        return matches
+            candidate = _build_search_candidate(node, query)
+            if candidate is not None:
+                matches.append(candidate)
+        matches.sort(key=lambda candidate: candidate.score)
+        return [
+            {
+                "id": candidate.node_id,
+                "label": candidate.label,
+                "type": candidate.resource_type,
+                "subtitle": candidate.subtitle,
+                "label_matches": candidate.label_matches,
+                "type_matches": candidate.type_matches,
+                "subtitle_matches": candidate.subtitle_matches,
+            }
+            for candidate in matches[:20]
+        ]
 
     @get("/static/{file_path:path}")
     async def static_file(self, file_path: str) -> Response[str]:
@@ -286,6 +314,56 @@ def _graph_payload(graph: Any) -> dict[str, Any]:
             "tests_count": graph.project.tests_count,
         },
     }
+
+
+def _build_search_candidate(node: DbtManifestNode, query: str) -> _SearchCandidate | None:
+    label_match = _match_search_field(query, node.name)
+    type_match = _match_search_field(query, node.resource_type)
+    subtitle_match = _match_search_field(query, node.unique_id)
+    field_matches = [
+        match for match in [label_match, type_match, subtitle_match] if match is not None
+    ]
+    if not field_matches:
+        return None
+    best_match = min(field_matches, key=lambda match: match.score)
+    return _SearchCandidate(
+        node_id=node.unique_id,
+        label=node.name,
+        resource_type=node.resource_type,
+        subtitle=node.unique_id,
+        label_matches=label_match.positions if label_match is not None else [],
+        type_matches=type_match.positions if type_match is not None else [],
+        subtitle_matches=subtitle_match.positions if subtitle_match is not None else [],
+        score=(*best_match.score, node.unique_id),
+    )
+
+
+def _match_search_field(query: str, value: str) -> _SearchFieldMatch | None:
+    normalized = value.lower()
+    substring_index = normalized.find(query)
+    if substring_index >= 0:
+        positions = list(range(substring_index, substring_index + len(query)))
+        return _SearchFieldMatch(
+            positions=positions,
+            score=(0, substring_index, len(value)),
+        )
+    subsequence_positions = _subsequence_positions(query, normalized)
+    if subsequence_positions is None:
+        return None
+    spread = subsequence_positions[-1] - subsequence_positions[0]
+    return _SearchFieldMatch(positions=subsequence_positions, score=(1, spread, len(value)))
+
+
+def _subsequence_positions(query: str, value: str) -> list[int] | None:
+    positions: list[int] = []
+    cursor = 0
+    for character in query:
+        index = value.find(character, cursor)
+        if index < 0:
+            return None
+        positions.append(index)
+        cursor = index + 1
+    return positions
 
 
 def _model_node_for_action(state: AppState, node_id: str) -> DbtManifestNode | None:

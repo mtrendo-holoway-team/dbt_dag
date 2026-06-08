@@ -97,6 +97,35 @@ def test_metadata_revision_endpoint_returns_revision(dbt_project: Path, tmp_path
     assert response.json()["revision"] == 1
 
 
+def test_search_endpoint_returns_highlight_positions_for_exact_name_match(
+    dbt_project: Path, tmp_path: Path
+) -> None:
+    client = _client(dbt_project, tmp_path)
+
+    response = client.get("/search?q=stg")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body[0]["id"] == "model.demo.stg_orders"
+    assert body[0]["label"] == "stg_orders"
+    assert body[0]["label_matches"] == [0, 1, 2]
+    assert body[0]["type_matches"] == []
+
+
+def test_search_endpoint_supports_fuzzy_resource_type_matches(
+    dbt_project: Path, tmp_path: Path
+) -> None:
+    client = _client(dbt_project, tmp_path)
+
+    response = client.get("/search?q=src")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body[0]["id"] == "source.demo.raw.orders"
+    assert body[0]["type"] == "source"
+    assert body[0]["type_matches"] == [0, 3, 4]
+
+
 def test_tests_block_returns_model_test_list(dbt_project: Path, tmp_path: Path) -> None:
     client = _client(dbt_project, tmp_path)
 

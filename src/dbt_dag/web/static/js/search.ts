@@ -3,7 +3,11 @@ import hotkeys from "hotkeys-js";
 type SearchResult = {
   id: string;
   label: string;
+  label_matches: number[];
+  subtitle: string;
+  subtitle_matches: number[];
   type: string;
+  type_matches: number[];
 };
 
 const overlay = document.getElementById("graph-search-overlay") as HTMLDivElement | null;
@@ -22,40 +26,32 @@ hotkeys("/", (event) => {
   openSearch();
 });
 
-if (input) {
-  hotkeys(
-    "esc,up,down,enter",
-    {
-      element: input,
-      keydown: true,
-      keyup: false,
-      capture: true
-    },
-    (event, handler) => {
-      if (!isSearchOpen()) return;
-      if (handler.key === "esc") {
-        event.preventDefault();
-        event.stopPropagation();
-        closeSearch();
-        return;
-      }
-      if (handler.key === "down") {
-        event.preventDefault();
-        moveActiveIndex(1);
-        return;
-      }
-      if (handler.key === "up") {
-        event.preventDefault();
-        moveActiveIndex(-1);
-        return;
-      }
-      if (handler.key === "enter") {
-        event.preventDefault();
-        selectActiveResult();
-      }
-    }
-  );
-}
+input?.addEventListener("keydown", (event) => {
+  if (!isSearchOpen()) return;
+  if (event.key === "Escape") {
+    event.preventDefault();
+    event.stopPropagation();
+    closeSearch();
+    return;
+  }
+  if (event.key === "ArrowDown") {
+    event.preventDefault();
+    event.stopPropagation();
+    moveActiveIndex(1);
+    return;
+  }
+  if (event.key === "ArrowUp") {
+    event.preventDefault();
+    event.stopPropagation();
+    moveActiveIndex(-1);
+    return;
+  }
+  if (event.key === "Enter") {
+    event.preventDefault();
+    event.stopPropagation();
+    selectActiveResult();
+  }
+});
 
 overlay?.addEventListener("click", (event) => {
   if (event.target !== overlay) return;
@@ -167,10 +163,39 @@ function renderResults(): void {
           data-node-id="${result.id}"
           type="button"
         >
-          <span class="min-w-0 truncate font-medium">${result.label}</span>
-          <span class="ml-4 shrink-0 text-xs uppercase tracking-[0.2em] text-zinc-500">${result.type}</span>
+          <span class="min-w-0">
+            <span class="block truncate font-medium">${renderHighlightedText(result.label, result.label_matches)}</span>
+            <span class="block truncate text-xs text-zinc-500">${renderHighlightedText(result.subtitle, result.subtitle_matches)}</span>
+          </span>
+          <span class="ml-4 shrink-0 text-xs uppercase tracking-[0.2em] text-zinc-500">${renderHighlightedText(result.type, result.type_matches)}</span>
         </button>
       `;
     })
     .join("");
+}
+
+function renderHighlightedText(value: string, matches: number[]): string {
+  if (matches.length === 0) {
+    return escapeHtml(value);
+  }
+  const matchSet = new Set(matches);
+  return value
+    .split("")
+    .map((character, index) => {
+      const escaped = escapeHtml(character);
+      if (!matchSet.has(index)) {
+        return escaped;
+      }
+      return `<mark class="text-amber-200">${escaped}</mark>`;
+    })
+    .join("");
+}
+
+function escapeHtml(value: string): string {
+  return value
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
 }
