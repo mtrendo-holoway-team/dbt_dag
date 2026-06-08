@@ -10,6 +10,8 @@ from dbt_dag.manifest.parser import load_manifest
 from dbt_dag.metadata.models import NodeRuntimeMetadata
 from dbt_dag.metadata.service import RuntimeMetadataService
 from dbt_dag.shared.time import now_msk
+from dbt_dag.tests.models import ModelTestSummaryDTO
+from dbt_dag.tests.service import ModelTestService
 
 
 @dataclass(frozen=True)
@@ -17,6 +19,7 @@ class GraphStateSnapshot:
     manifest: DbtManifest
     graph: GraphPayload
     runtime_metadata: dict[str, NodeRuntimeMetadata]
+    test_summaries: dict[str, ModelTestSummaryDTO]
     revision: int
     refreshed_at: datetime
 
@@ -26,20 +29,27 @@ class GraphStateStore:
         self,
         manifest_path: Path,
         metadata_service: RuntimeMetadataService,
+        test_service: ModelTestService,
         include_warehouse_on_init: bool = True,
     ) -> None:
         self._manifest_path = manifest_path
         self._metadata_service = metadata_service
+        self._test_service = test_service
         self._lock = threading.Lock()
         manifest = load_manifest(manifest_path)
         runtime_metadata = metadata_service.load(
             manifest,
             include_warehouse=include_warehouse_on_init,
         )
+        test_summaries = test_service.load(
+            manifest,
+            include_warehouse=include_warehouse_on_init,
+        )
         self._snapshot = GraphStateSnapshot(
             manifest=manifest,
-            graph=build_graph(manifest, runtime_metadata),
+            graph=build_graph(manifest, runtime_metadata, test_summaries),
             runtime_metadata=runtime_metadata,
+            test_summaries=test_summaries,
             revision=1,
             refreshed_at=now_msk(),
         )
@@ -65,11 +75,16 @@ class GraphStateStore:
             manifest,
             include_warehouse=include_warehouse,
         )
-        graph = build_graph(manifest, runtime_metadata)
+        test_summaries = self._test_service.load(
+            manifest,
+            include_warehouse=include_warehouse,
+        )
+        graph = build_graph(manifest, runtime_metadata, test_summaries)
         with self._lock:
             changed = (
                 manifest != self._snapshot.manifest
                 or runtime_metadata != self._snapshot.runtime_metadata
+                or test_summaries != self._snapshot.test_summaries
             )
             if not changed:
                 return False
@@ -77,6 +92,7 @@ class GraphStateStore:
                 manifest=manifest,
                 graph=graph,
                 runtime_metadata=runtime_metadata,
+                test_summaries=test_summaries,
                 revision=self._snapshot.revision + 1,
                 refreshed_at=now_msk(),
             )

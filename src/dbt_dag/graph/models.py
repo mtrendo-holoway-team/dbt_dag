@@ -3,6 +3,7 @@ from datetime import datetime
 
 from dbt_dag.metadata.models import RuntimeDataSource
 from dbt_dag.metadata.models import RuntimeFreshness
+from dbt_dag.tests.models import ModelTestStatus
 
 GRAPH_COLUMNS = ["sources", "stg", "int", "marts", "exposures", "other"]
 
@@ -13,11 +14,14 @@ class GraphNodeRuntime:
     execution_time_source: RuntimeDataSource
     last_updated_at: datetime | None
     last_updated_source: RuntimeDataSource
-    status_icon_name: str
-    status_color_hex: str
     freshness: RuntimeFreshness
     border_width_px: float
     border_color: str
+
+
+@dataclass(frozen=True)
+class GraphNodeTestIndicator:
+    status: ModelTestStatus
 
 
 @dataclass(frozen=True)
@@ -31,6 +35,7 @@ class GraphNode:
     description: str
     indicators: list[str]
     runtime: GraphNodeRuntime
+    test_indicator: GraphNodeTestIndicator
 
 
 @dataclass(frozen=True)

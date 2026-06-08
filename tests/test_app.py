@@ -57,6 +57,7 @@ def test_build_app_state_reports_startup_steps(
     partition_repository = Mock()
     partition_service = Mock()
     partition_runner = Mock()
+    test_service = Mock()
     graph_store = Mock()
     watcher = Mock()
     task_runner = Mock()
@@ -82,6 +83,11 @@ def test_build_app_state_reports_startup_steps(
         "dbt_dag.web.state.ModelPartitionSyncRunner",
         Mock(return_value=partition_runner),
     )
+    monkeypatch.setattr("dbt_dag.web.state.ModelTestService", Mock(return_value=test_service))
+    monkeypatch.setattr(
+        "dbt_dag.web.state.WarehouseTestRunsReader",
+        Mock(return_value=Mock()),
+    )
     monkeypatch.setattr("dbt_dag.web.state.GraphStateStore", Mock(return_value=graph_store))
     monkeypatch.setattr("dbt_dag.web.state.MetadataWatcher", Mock(return_value=watcher))
     monkeypatch.setattr("dbt_dag.web.state.DbtTaskRunner", Mock(return_value=task_runner))
@@ -93,7 +99,8 @@ def test_build_app_state_reports_startup_steps(
     graph_state_store.assert_called_once_with(
         paths.manifest_path,
         ANY,
-        include_warehouse_on_init=True,
+        test_service,
+        include_warehouse_on_init=False,
     )
     assert steps == [
         "Resolving dbt project paths",

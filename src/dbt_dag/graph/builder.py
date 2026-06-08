@@ -1,18 +1,17 @@
-from datetime import datetime
-
 from dbt_dag.graph.models import GRAPH_COLUMNS
 from dbt_dag.graph.models import GraphEdge
 from dbt_dag.graph.models import GraphGroup
 from dbt_dag.graph.models import GraphNode
 from dbt_dag.graph.models import GraphNodeRuntime
+from dbt_dag.graph.models import GraphNodeTestIndicator
 from dbt_dag.graph.models import GraphPayload
 from dbt_dag.graph.models import ProjectSummary
 from dbt_dag.manifest.models import DbtManifest
 from dbt_dag.manifest.models import DbtManifestNode
 from dbt_dag.metadata.models import empty_node_runtime_metadata
 from dbt_dag.metadata.models import NodeRuntimeMetadata
-from dbt_dag.shared.time import now_msk
-from dbt_dag.web.node_status import resolve_node_status_icon
+from dbt_dag.tests.models import ModelTestStatus
+from dbt_dag.tests.models import ModelTestSummaryDTO
 
 
 def classify_node(node: DbtManifestNode) -> str:
@@ -48,8 +47,8 @@ def _is_mart_node(name: str, searchable: str) -> bool:
 def build_graph(
     manifest: DbtManifest,
     runtime_metadata: dict[str, NodeRuntimeMetadata] | None = None,
+    test_summaries: dict[str, ModelTestSummaryDTO] | None = None,
 ) -> GraphPayload:
-    reference_time = now_msk()
     graph_nodes = manifest.graph_nodes()
     groups = _build_groups(graph_nodes)
     nodes = [
@@ -68,7 +67,9 @@ def build_graph(
                     if runtime_metadata is not None
                     else empty_node_runtime_metadata()
                 ),
-                reference_time=reference_time,
+            ),
+            test_indicator=GraphNodeTestIndicator(
+                status=_graph_test_status(node.unique_id, test_summaries),
             ),
         )
         for node in graph_nodes.values()
@@ -119,25 +120,30 @@ def node_type_badge(node: DbtManifestNode) -> str:
 
 def _graph_runtime(
     metadata: NodeRuntimeMetadata | None,
-    reference_time: datetime,
 ) -> GraphNodeRuntime:
     if metadata is None:
         metadata = empty_node_runtime_metadata()
-    status_icon = resolve_node_status_icon(
-        metadata.last_updated_at,
-        reference_time=reference_time,
-    )
     return GraphNodeRuntime(
         execution_time_seconds=metadata.execution_time_seconds,
         execution_time_source=metadata.execution_time_source,
         last_updated_at=metadata.last_updated_at,
         last_updated_source=metadata.last_updated_source,
-        status_icon_name=status_icon.icon_name,
-        status_color_hex=status_icon.color_hex,
         freshness=metadata.freshness,
         border_width_px=metadata.border_width_px,
         border_color=metadata.border_color,
     )
+
+
+def _graph_test_status(
+    node_id: str,
+    test_summaries: dict[str, ModelTestSummaryDTO] | None,
+) -> ModelTestStatus:
+    if test_summaries is None:
+        return ModelTestStatus.MISSING
+    summary = test_summaries.get(node_id)
+    if summary is None:
+        return ModelTestStatus.MISSING
+    return summary.status
 
 
 def _build_groups(graph_nodes: dict[str, DbtManifestNode]) -> list[GraphGroup]:

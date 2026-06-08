@@ -39,12 +39,14 @@ type LayoutConstraints = {
   relativePlacementConstraint?: RelativePlacementConstraint[];
 };
 
-const nodeHeight = 32;
+type GraphNodeDataValue = string | number;
+
+const nodeHeight = 42;
 const minNodeWidth = 96;
 const maxNodeWidth = 360;
 const nodeHorizontalPadding = 15;
 const averageLabelCharacterWidth = 7;
-const nodeStatusIconWidth = 28;
+const nodeIndicatorRowWidth = 40;
 const directionGap = 130;
 const sourceNodeGap = 70;
 const nodeSpacing = 32;
@@ -280,13 +282,14 @@ function elementsForPayload(payload: GraphPayload): ElementDefinition[] {
       kind: "node",
       nodeWidth: nodeWidthForLabel(displayLabel),
       typeBadge: node.type_badge,
-      statusIconName: node.runtime.status_icon_name,
-      statusColorHex: node.runtime.status_color_hex,
+      freshness: node.runtime.freshness,
+      lastUpdatedAt: node.runtime.last_updated_at ?? "",
+      testStatus: node.test_indicator.status,
       column: node.column,
       fillColor: nodeFill(node),
       borderColor: node.runtime.border_color,
       borderWidth: Math.max(node.runtime.border_width_px, 1)
-    };
+    } satisfies Record<string, GraphNodeDataValue>;
     if (parent) data.parent = parent;
     return { data, classes: "graph-node" };
   });
@@ -462,7 +465,7 @@ function separateNodes(left: NodeSingular, right: NodeSingular): boolean {
 
 function nodeWidthForLabel(label: string): number {
   return clamp(
-    label.length * averageLabelCharacterWidth + nodeHorizontalPadding + nodeStatusIconWidth,
+    label.length * averageLabelCharacterWidth + nodeHorizontalPadding + nodeIndicatorRowWidth,
     minNodeWidth,
     maxNodeWidth
   );

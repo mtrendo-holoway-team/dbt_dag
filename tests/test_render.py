@@ -7,6 +7,7 @@ from litestar.plugins.jinja import JinjaTemplateEngine
 
 from dbt_dag.inspectors import actions as actions_inspector
 from dbt_dag.inspectors import partition as partition_inspector
+from dbt_dag.inspectors import tests as tests_inspector
 from dbt_dag.inspectors.dto import NodeInspectorContextDTO
 from dbt_dag.manifest.models import DbtManifestNode
 from dbt_dag.metadata.models import empty_node_runtime_metadata
@@ -15,7 +16,11 @@ from dbt_dag.partitions.models import PartitionDayCellDTO
 from dbt_dag.partitions.models import PartitionFillLevel
 from dbt_dag.partitions.models import PartitionMonthDTO
 from dbt_dag.partitions.models import PartitionSyncStatus
+from dbt_dag.tests.models import ModelTestResultDTO
+from dbt_dag.tests.models import ModelTestStatus
+from dbt_dag.tests.models import ModelTestSummaryDTO
 from dbt_dag.web import render
+from dbt_dag.web.node_status import resolve_node_status_icon
 from dbt_dag.web.template_config import TEMPLATES_DIRECTORY
 
 
@@ -72,7 +77,9 @@ def test_shell_template_renders_tokenized_block_ids() -> None:
                 raw={},
             ),
             selection_token="token123",
+            status_icon=resolve_node_status_icon(None),
             last_update_block_id="inspector-block-last-update-token123",
+            tests_block_id="inspector-block-tests-token123",
             partition_block_id="inspector-block-partition-token123",
             actions_block_id="inspector-block-actions-token123",
             tasks_block_id="inspector-block-tasks-token123",
@@ -81,9 +88,11 @@ def test_shell_template_renders_tokenized_block_ids() -> None:
 
     assert "Staged orders" in html
     assert 'id="inspector-block-last-update-token123"' in html
+    assert 'id="inspector-block-tests-token123"' in html
     assert "/inspector/node/model.demo.stg_orders/last-update?selection_token=token123" in html
     assert 'id="inspector-block-tasks-token123"' in html
     assert "/inspector/node/model.demo.stg_orders/tasks?selection_token=token123" in html
+    assert "/inspector/node/model.demo.stg_orders/tests?selection_token=token123" in html
 
 
 def test_actions_template_renders_model_actions_with_shortcuts() -> None:
@@ -112,7 +121,7 @@ def test_actions_template_hides_dbt_buttons_for_non_model_nodes() -> None:
         .render(**actions_inspector.build_template_context(inspector))
     )
 
-    assert "dbt actions are available only for model nodes." in html
+    assert html.strip() == "</section>"
     assert 'data-command-action="' not in html
 
 
@@ -168,6 +177,8 @@ def test_partition_template_contains_fill_states() -> None:
         runtime=empty_node_runtime_metadata(),
         tasks=[],
         partition_calendar=calendar,
+        tests=None,
+        tests_loading=False,
         supports_partitions=True,
     )
 
@@ -177,10 +188,10 @@ def test_partition_template_contains_fill_states() -> None:
         .render(**partition_inspector.build_template_context(inspector))
     )
 
-    assert "Refresh partition data" in html
+    assert "Обновить" in html
     assert "partition-day-no-data" in html
     assert "partition-day-normal" in html
-    assert "2026-06-01 - No data" in html
+    assert "2026-06-01 - Нет данных" in html
     assert ">2026<" in html
 
 
@@ -231,6 +242,8 @@ def test_partition_template_hides_empty_current_day_marker() -> None:
         runtime=empty_node_runtime_metadata(),
         tasks=[],
         partition_calendar=calendar,
+        tests=None,
+        tests_loading=False,
         supports_partitions=True,
     )
 
@@ -294,6 +307,8 @@ def test_partition_template_uses_green_only_for_small_medians() -> None:
         runtime=empty_node_runtime_metadata(),
         tasks=[],
         partition_calendar=calendar,
+        tests=None,
+        tests_loading=False,
         supports_partitions=True,
     )
 
@@ -387,6 +402,8 @@ def test_partition_template_uses_future_days_when_history_is_short() -> None:
         runtime=empty_node_runtime_metadata(),
         tasks=[],
         partition_calendar=calendar,
+        tests=None,
+        tests_loading=False,
         supports_partitions=True,
     )
 
@@ -413,11 +430,58 @@ def test_partition_day_color_thresholds() -> None:
     assert partition_inspector._partition_day_color_class(2, 10.0, True) == "partition-day-normal"
 
 
+def test_tests_template_renders_missing_state() -> None:
+    inspector = _inspector_context(
+        resource_type="model", tests=_missing_tests(), tests_loading=True
+    )
+
+    html = (
+        _template_engine()
+        .get_template(tests_inspector.TEMPLATE_NAME)
+        .render(**tests_inspector.build_template_context(inspector))
+    )
+
+    assert "нет тестов" in html
+    assert "status-dot-missing" in html
+    assert "status-dot-loading" in html
+
+
+def test_tests_template_renders_test_list() -> None:
+    inspector = _inspector_context(
+        resource_type="model",
+        tests=ModelTestSummaryDTO(
+            model_unique_id="model.demo.stg_orders",
+            status=ModelTestStatus.FAILED,
+            tests=[
+                ModelTestResultDTO(
+                    test_unique_id="test.demo.not_null_orders_id",
+                    test_name="not_null_orders_id",
+                    status=ModelTestStatus.FAILED,
+                    executed_at=None,
+                )
+            ],
+        ),
+    )
+
+    html = (
+        _template_engine()
+        .get_template(tests_inspector.TEMPLATE_NAME)
+        .render(**tests_inspector.build_template_context(inspector))
+    )
+
+    assert "not_null_orders_id" in html
+    assert "status-dot-failed" in html
+
+
 def _template_engine() -> JinjaTemplateEngine:
     return JinjaTemplateEngine(directory=TEMPLATES_DIRECTORY)
 
 
-def _inspector_context(resource_type: str) -> NodeInspectorContextDTO:
+def _inspector_context(
+    resource_type: str,
+    tests: ModelTestSummaryDTO | None = None,
+    tests_loading: bool = False,
+) -> NodeInspectorContextDTO:
     return NodeInspectorContextDTO(
         selection_token="token123",
         node=DbtManifestNode(
@@ -434,5 +498,15 @@ def _inspector_context(resource_type: str) -> NodeInspectorContextDTO:
         runtime=empty_node_runtime_metadata(),
         tasks=[],
         partition_calendar=None,
+        tests=tests,
+        tests_loading=tests_loading,
         supports_partitions=resource_type == "model",
+    )
+
+
+def _missing_tests() -> ModelTestSummaryDTO:
+    return ModelTestSummaryDTO(
+        model_unique_id="model.demo.stg_orders",
+        status=ModelTestStatus.MISSING,
+        tests=[],
     )

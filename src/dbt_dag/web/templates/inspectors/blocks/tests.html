@@ -1,0 +1,33 @@
+<section id="{{ block_id }}" class="p-5 space-y-4" data-inspector-refresh="metadata"
+         hx-get="/inspector/node/{{ inspector.node.unique_id | urlencode }}/tests?selection_token={{ inspector.selection_token }}"
+         hx-swap="outerHTML"
+         {% if tests_loading %}
+         data-tests-enrichment-pending="true"
+         data-tests-enrichment-url="/inspector/node/{{ inspector.node.unique_id | urlencode }}/tests?selection_token={{ inspector.selection_token }}&include_warehouse=true"
+         {% endif %}>
+    <div class="space-y-1">
+        <h2 class="text-sm font-medium">Тесты</h2>
+        <div class="flex items-center gap-2 text-xs text-zinc-400">
+            <span class="{{ summary_dot_class }}{{ loading_class }}"></span>
+            <span>{{ summary_label }}</span>
+        </div>
+    </div>
+    {% if not summary or summary.status == missing_status %}
+        <div class="flex items-center gap-2 text-sm text-zinc-300">
+            <span class="status-dot status-dot-missing{{ loading_class }}"></span>
+            <span>нет тестов</span>
+        </div>
+    {% else %}
+        <ul class="space-y-3">
+            {% for test in tests %}
+                <li class="flex items-start gap-2 text-sm text-zinc-200">
+                    <span class="{{ test.dot_class }}{{ loading_class }} mt-1"></span>
+                    <span class="min-w-0 flex-1">
+                        <span class="block break-all">{{ test.name }}</span>
+                        <span class="block text-xs text-zinc-500">{{ test.status_label }} · {{ test.executed_at }}</span>
+                    </span>
+                </li>
+            {% endfor %}
+        </ul>
+    {% endif %}
+</section>

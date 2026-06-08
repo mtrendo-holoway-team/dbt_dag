@@ -15,6 +15,7 @@ from dbt_dag.inspectors import last_update as last_update_inspector
 from dbt_dag.inspectors import NodeInspectorContextFactory
 from dbt_dag.inspectors import partition as partition_inspector
 from dbt_dag.inspectors import tasks as tasks_inspector
+from dbt_dag.inspectors import tests as tests_inspector
 from dbt_dag.inspectors.utils import block_id
 from dbt_dag.manifest.models import DbtManifestNode
 from dbt_dag.metadata.models import empty_node_runtime_metadata
@@ -80,6 +81,7 @@ class PagesController(Controller):
                 ),
                 "selection_token": selection_token,
                 "last_update_block_id": block_id("last-update", selection_token),
+                "tests_block_id": block_id("tests", selection_token),
                 "partition_block_id": block_id("partition", selection_token),
                 "actions_block_id": block_id("actions", selection_token),
                 "tasks_block_id": block_id("tasks", selection_token),
@@ -115,6 +117,26 @@ class PagesController(Controller):
         return Template(
             template_name=partition_inspector.TEMPLATE_NAME,
             context=partition_inspector.build_template_context(inspector),
+        )
+
+    @get("/inspector/node/{node_id:str}/tests")
+    async def node_tests_inspector(
+        self,
+        request: Request[Any, Any, Any],
+        node_id: str,
+        selection_token: str = "initial",
+        include_warehouse: bool = False,
+    ) -> Template:
+        inspector = _context_factory.build(
+            _state(request),
+            node_id,
+            selection_token,
+            include_tests=True,
+            include_test_warehouse=include_warehouse,
+        )
+        return Template(
+            template_name=tests_inspector.TEMPLATE_NAME,
+            context=tests_inspector.build_template_context(inspector),
         )
 
     @get("/inspector/node/{node_id:str}/actions")
@@ -240,11 +262,12 @@ def _graph_payload(graph: Any) -> dict[str, Any]:
                         else None
                     ),
                     "last_updated_source": node.runtime.last_updated_source.value,
-                    "status_icon_name": node.runtime.status_icon_name,
-                    "status_color_hex": node.runtime.status_color_hex,
                     "freshness": node.runtime.freshness.value,
                     "border_width_px": node.runtime.border_width_px,
                     "border_color": node.runtime.border_color,
+                },
+                "test_indicator": {
+                    "status": node.test_indicator.status.value,
                 },
             }
             for node in graph.nodes

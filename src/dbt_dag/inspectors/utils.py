@@ -1,9 +1,8 @@
 from dbt_dag.metadata.models import RuntimeDataSource
-from dbt_dag.partitions.models import (
-    ModelPartitionCalendarDTO,
-    PartitionMonthDTO,
-    PartitionSyncStatus,
-)
+from dbt_dag.partitions.models import ModelPartitionCalendarDTO
+from dbt_dag.partitions.models import PartitionMonthDTO
+from dbt_dag.partitions.models import PartitionSyncStatus
+from dbt_dag.tests.models import ModelTestStatus
 
 
 def block_id(block_name: str, selection_token: str) -> str:
@@ -51,3 +50,23 @@ def group_months_by_year(months: list[PartitionMonthDTO]) -> list[list[Partition
     if current_group:
         groups.append(current_group)
     return groups
+
+
+def test_status_dot_class(status: ModelTestStatus) -> str:
+    if status == ModelTestStatus.PASSED:
+        return "status-dot status-dot-passed"
+    if status == ModelTestStatus.STALE:
+        return "status-dot status-dot-stale"
+    if status == ModelTestStatus.FAILED:
+        return "status-dot status-dot-failed"
+    return "status-dot status-dot-missing"
+
+
+def test_status_label(status: ModelTestStatus) -> str:
+    if status == ModelTestStatus.PASSED:
+        return "Пройден"
+    if status == ModelTestStatus.STALE:
+        return "Не запускался больше суток"
+    if status == ModelTestStatus.FAILED:
+        return "Ошибка"
+    return "Нет тестов"

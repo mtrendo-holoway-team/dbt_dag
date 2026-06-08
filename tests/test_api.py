@@ -20,6 +20,7 @@ from dbt_dag.partitions.models import PartitionMonthDTO
 from dbt_dag.partitions.models import PartitionSyncStatus
 from dbt_dag.settings import Settings
 from dbt_dag.tasks.repository import NodeTaskRepository
+from dbt_dag.tests.service import ModelTestService
 from dbt_dag.web.controllers import pages
 from dbt_dag.web.controllers.pages import PagesController
 from dbt_dag.web.graph_state import GraphStateStore
@@ -45,6 +46,7 @@ def test_graph_endpoint_returns_documented_shape(dbt_project: Path, tmp_path: Pa
         "model.demo.fct_orders": "T",
     }
     assert body["nodes"][0]["runtime"]["border_width_px"] == 1
+    assert body["nodes"][0]["test_indicator"]["status"] == "missing"
 
 
 def test_node_inspector_returns_shell_with_tokenized_blocks(
@@ -59,10 +61,12 @@ def test_node_inspector_returns_shell_with_tokenized_blocks(
     assert "stg_orders" in response.text
     assert "Staged orders" in response.text
     assert 'id="inspector-block-last-update-token123"' in response.text
+    assert 'id="inspector-block-tests-token123"' in response.text
     assert (
         "/inspector/node/model.demo.stg_orders/last-update?selection_token=token123"
         in response.text
     )
+    assert "/inspector/node/model.demo.stg_orders/tests?selection_token=token123" in response.text
 
 
 def test_project_inspector_returns_when_no_selection(dbt_project: Path, tmp_path: Path) -> None:
@@ -71,7 +75,7 @@ def test_project_inspector_returns_when_no_selection(dbt_project: Path, tmp_path
     response = client.get("/inspector/project")
 
     assert response.status_code == 200
-    assert "Project" in response.text
+    assert "Моделей" in response.text
 
 
 def test_last_update_block_returns_runtime_panel(dbt_project: Path, tmp_path: Path) -> None:
@@ -80,8 +84,8 @@ def test_last_update_block_returns_runtime_panel(dbt_project: Path, tmp_path: Pa
     response = client.get("/inspector/node/model.demo.stg_orders/last-update?selection_token=abc")
 
     assert response.status_code == 200
-    assert "Last update" in response.text
-    assert "Execution time" in response.text
+    assert "Обновлено" in response.text
+    assert "Время расчета" in response.text
 
 
 def test_metadata_revision_endpoint_returns_revision(dbt_project: Path, tmp_path: Path) -> None:
@@ -91,6 +95,29 @@ def test_metadata_revision_endpoint_returns_revision(dbt_project: Path, tmp_path
 
     assert response.status_code == 200
     assert response.json()["revision"] == 1
+
+
+def test_tests_block_returns_model_test_list(dbt_project: Path, tmp_path: Path) -> None:
+    client = _client(dbt_project, tmp_path)
+
+    response = client.get("/inspector/node/model.demo.fct_orders/tests?selection_token=abc")
+
+    assert response.status_code == 200
+    assert "Тесты" in response.text
+    assert "not_null_orders_id" in response.text
+
+
+def test_tests_block_renders_missing_state_for_model_without_tests(
+    dbt_project: Path,
+    tmp_path: Path,
+) -> None:
+    client = _client(dbt_project, tmp_path)
+
+    response = client.get("/inspector/node/model.demo.stg_orders/tests?selection_token=abc")
+
+    assert response.status_code == 200
+    assert "нет тестов" in response.text
+    assert "status-dot-missing" in response.text
 
 
 def test_model_action_endpoint_streams_ndjson(dbt_project: Path, tmp_path: Path) -> None:
@@ -143,8 +170,8 @@ def test_partition_partial_endpoint_returns_calendar(dbt_project: Path, tmp_path
     )
 
     assert response.status_code == 200
-    assert "Partition data" in response.text
-    assert "Refresh partition data" in response.text
+    assert "Данные" in response.text
+    assert "Обновить" in response.text
     assert 'id="inspector-block-partition-token123"' in response.text
 
 
@@ -233,6 +260,7 @@ def _client(
     graph_store = GraphStateStore(
         dbt_project / "target" / "manifest.json",
         _empty_metadata_service(),
+        _empty_test_service(),
     )
     metadata_watcher = MetadataWatcher(graph_store)
     partition_runner = partition_runner or Mock()
@@ -254,6 +282,7 @@ def _client(
         partition_repository=Mock(),
         partition_service=partition_service,
         partition_runner=partition_runner,
+        test_service=_empty_test_service(),
     )
     return TestClient(
         Litestar(
@@ -292,3 +321,11 @@ def _partition_service() -> Mock:
         last_error="",
     )
     return service
+
+
+def _empty_test_service() -> ModelTestService:
+    artifact_reader = Mock()
+    artifact_reader.read_latest_runs.return_value = {}
+    warehouse_reader = Mock()
+    warehouse_reader.read_latest_runs.return_value = {}
+    return ModelTestService(artifact_reader, warehouse_reader)

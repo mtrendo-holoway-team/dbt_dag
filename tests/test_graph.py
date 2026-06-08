@@ -26,6 +26,11 @@ def test_graph_builder_emits_stable_nodes_and_edges(dbt_project: Path) -> None:
         "model.demo.stg_orders": "V",
         "model.demo.fct_orders": "T",
     }
+    assert {node.node_id: node.test_indicator.status.value for node in graph.nodes} == {
+        "source.demo.raw.orders": "missing",
+        "model.demo.stg_orders": "missing",
+        "model.demo.fct_orders": "missing",
+    }
     assert {edge.edge_id for edge in graph.edges} == {
         "source.demo.raw.orders->model.demo.stg_orders",
         "model.demo.stg_orders->model.demo.fct_orders",

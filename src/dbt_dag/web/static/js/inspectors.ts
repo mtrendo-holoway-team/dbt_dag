@@ -4,6 +4,7 @@ import htmx from "htmx.org";
 const updatingOpacity = "0.8";
 const closeDelayMs = 10_000;
 const chordDelayMs = 900;
+const testEnrichmentDelayMs = 3_000;
 
 type CommandAction = "build" | "run" | "test" | "compile";
 
@@ -31,6 +32,7 @@ let activePopup: CommandPopup | null = null;
 let activeCloseTimer: number | null = null;
 let pendingChord = "";
 let pendingChordTimer: number | null = null;
+const testsEnrichmentTimers = new Map<string, number>();
 
 document.addEventListener("click", (event) => {
   const target = event.target as HTMLElement;
@@ -57,6 +59,7 @@ document.body.addEventListener("htmx:afterSwap", (event) => {
   const target = (event as CustomEvent).detail.target as HTMLElement | null;
   if (!target || !target.closest("#inspector")) return;
   target.style.opacity = "";
+  scheduleTestsEnrichment(document.body);
 });
 
 document.body.addEventListener("htmx:responseError", (event) => {
@@ -104,6 +107,8 @@ export function refreshInspectorMetadataBlocks(): void {
   refreshInspectorBlocks("metadata");
 }
 
+scheduleTestsEnrichment(document.body);
+
 function refreshInspectorTaskBlocks(): void {
   refreshInspectorBlocks("tasks");
 }
@@ -118,8 +123,36 @@ function refreshInspectorBlocks(refreshType: string): void {
   refreshableBlocks.forEach((block) => {
     const url = block.getAttribute("hx-get");
     if (!url || !block.id) return;
+    clearTestsEnrichmentTimer(block.id);
     htmx.ajax("GET", url, { target: `#${block.id}`, swap: "outerHTML" });
   });
+}
+
+function scheduleTestsEnrichment(root: ParentNode): void {
+  const blocks = root.querySelectorAll<HTMLElement>("[data-tests-enrichment-pending='true']");
+  blocks.forEach((block) => {
+    const url = block.dataset.testsEnrichmentUrl;
+    if (!url || !block.id) return;
+    clearTestsEnrichmentTimer(block.id);
+    testsEnrichmentTimers.set(
+      block.id,
+      window.setTimeout(() => {
+        if (!document.body.contains(block)) {
+          testsEnrichmentTimers.delete(block.id);
+          return;
+        }
+        htmx.ajax("GET", url, { target: `#${block.id}`, swap: "outerHTML" });
+        testsEnrichmentTimers.delete(block.id);
+      }, testEnrichmentDelayMs)
+    );
+  });
+}
+
+function clearTestsEnrichmentTimer(blockId: string): void {
+  const timer = testsEnrichmentTimers.get(blockId);
+  if (timer === undefined) return;
+  window.clearTimeout(timer);
+  testsEnrichmentTimers.delete(blockId);
 }
 
 async function runCommandAction(button: HTMLButtonElement): Promise<void> {

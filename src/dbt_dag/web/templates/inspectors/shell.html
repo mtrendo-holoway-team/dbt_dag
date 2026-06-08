@@ -21,6 +21,12 @@
          hx-trigger="load"
          hx-target="this"
          hx-swap="outerHTML">{{ loading_block("Last update") }}</div>
+    <div id="{{ tests_block_id }}"
+         data-inspector-refresh="metadata"
+         hx-get="/inspector/node/{{ node.unique_id | urlencode }}/tests?selection_token={{ selection_token }}"
+         hx-trigger="load"
+         hx-target="this"
+         hx-swap="outerHTML">{{ loading_block("Tests") }}</div>
     <div id="{{ partition_block_id }}"
          data-inspector-refresh="metadata"
          hx-get="/inspector/node/{{ node.unique_id | urlencode }}/partition?selection_token={{ selection_token }}"

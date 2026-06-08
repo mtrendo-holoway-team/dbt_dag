@@ -126,6 +126,8 @@ def _freshness(metadata: PartialRuntimeMetadata) -> RuntimeFreshness:
         return RuntimeFreshness.LAST_2H
     if age <= timedelta(hours=24):
         return RuntimeFreshness.LAST_24H
+    if age <= timedelta(hours=48):
+        return RuntimeFreshness.LAST_48H
     return RuntimeFreshness.STALE
 
 

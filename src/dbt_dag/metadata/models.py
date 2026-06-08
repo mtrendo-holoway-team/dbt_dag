@@ -12,6 +12,7 @@ class RuntimeDataSource(StrEnum):
 class RuntimeFreshness(StrEnum):
     LAST_2H = "last_2h"
     LAST_24H = "last_24h"
+    LAST_48H = "last_48h"
     STALE = "stale"
     UNKNOWN = "unknown"
 

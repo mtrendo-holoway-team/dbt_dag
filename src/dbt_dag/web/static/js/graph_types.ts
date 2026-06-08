@@ -3,11 +3,13 @@ export type GraphNodeRuntime = {
   execution_time_source: string;
   last_updated_at: string | null;
   last_updated_source: string;
-  status_icon_name: string;
-  status_color_hex: string;
-  freshness: string;
+  freshness: "last_2h" | "last_24h" | "last_48h" | "stale" | "unknown";
   border_width_px: number;
   border_color: string;
+};
+
+export type GraphNodeTestIndicator = {
+  status: "passed" | "stale" | "failed" | "missing";
 };
 
 export type GraphNode = {
@@ -20,6 +22,7 @@ export type GraphNode = {
   description: string;
   indicators: string[];
   runtime: GraphNodeRuntime;
+  test_indicator: GraphNodeTestIndicator;
 };
 
 export type GraphEdge = {

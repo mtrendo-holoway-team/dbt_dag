@@ -4,17 +4,13 @@ from statistics import median
 from typing import Any
 
 from dbt_dag.inspectors.dto import NodeInspectorContextDTO
-from dbt_dag.inspectors.utils import (
-    block_id,
-    group_months_by_year,
-    partition_status_class,
-    partition_status_label,
-)
-from dbt_dag.partitions.models import (
-    ModelPartitionCalendarDTO,
-    PartitionDayCellDTO,
-    PartitionMonthDTO,
-)
+from dbt_dag.inspectors.utils import block_id
+from dbt_dag.inspectors.utils import group_months_by_year
+from dbt_dag.inspectors.utils import partition_status_class
+from dbt_dag.inspectors.utils import partition_status_label
+from dbt_dag.partitions.models import ModelPartitionCalendarDTO
+from dbt_dag.partitions.models import PartitionDayCellDTO
+from dbt_dag.partitions.models import PartitionMonthDTO
 
 TEMPLATE_NAME = "inspectors/blocks/partition.html"
 _REFERENCE_WINDOW = 7

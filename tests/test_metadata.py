@@ -3,15 +3,15 @@ import json
 from pathlib import Path
 import pytest
 import threading
-from typing import cast
+from typing import Any, cast
 
 from dbt_dag.manifest.models import DbtManifest
 from dbt_dag.manifest.models import DbtManifestNode
 from dbt_dag.manifest.parser import load_manifest
 from dbt_dag.metadata import service
 from dbt_dag.metadata.artifacts import RunResultsArtifactReader
-from dbt_dag.metadata.models import PartialRuntimeMetadata
 from dbt_dag.metadata.models import MODEL_BORDER_COLOR
+from dbt_dag.metadata.models import PartialRuntimeMetadata
 from dbt_dag.metadata.models import RuntimeDataSource
 from dbt_dag.metadata.models import RuntimeFreshness
 from dbt_dag.metadata.service import RuntimeMetadataService
@@ -19,6 +19,7 @@ from dbt_dag.metadata.warehouse import _relations_by_node
 from dbt_dag.metadata.warehouse import WarehouseMetadataReader
 from dbt_dag.metadata.watcher import MetadataWatcher
 from dbt_dag.shared.time import MSK
+from dbt_dag.tests.service import ModelTestService
 from dbt_dag.web.graph_state import GraphStateStore
 
 
@@ -101,7 +102,7 @@ def test_runtime_service_decorates_freshness_and_logarithmic_width(
             "model.demo.fct_orders": PartialRuntimeMetadata(
                 execution_time_seconds=100,
                 execution_time_source=RuntimeDataSource.RUN_RESULTS,
-                last_updated_at=datetime(2026, 6, 2, 13, tzinfo=MSK),
+                last_updated_at=datetime(2026, 6, 2, 11, tzinfo=MSK),
                 last_updated_source=RuntimeDataSource.RUN_RESULTS,
             ),
         }
@@ -114,7 +115,7 @@ def test_runtime_service_decorates_freshness_and_logarithmic_width(
     ).load(manifest)
 
     assert metadata["model.demo.stg_orders"].freshness == RuntimeFreshness.LAST_2H
-    assert metadata["model.demo.fct_orders"].freshness == RuntimeFreshness.LAST_24H
+    assert metadata["model.demo.fct_orders"].freshness == RuntimeFreshness.LAST_48H
     assert metadata["model.demo.fct_orders"].border_width_px == 6
     assert 1 < metadata["model.demo.stg_orders"].border_width_px < 6
     assert metadata["model.demo.stg_orders"].border_color == MODEL_BORDER_COLOR
@@ -132,6 +133,7 @@ def test_graph_state_store_skips_warehouse_load_on_init_when_disabled(
     GraphStateStore(
         manifest_path,
         cast(RuntimeMetadataService, metadata_service),
+        _empty_test_service(),
         include_warehouse_on_init=False,
     )
 
@@ -185,6 +187,7 @@ def test_metadata_watcher_stop_does_not_block_on_running_thread(
     graph_store = GraphStateStore(
         dbt_project / "target" / "manifest.json",
         _empty_metadata_service(),
+        _empty_test_service(),
     )
     watcher = MetadataWatcher(graph_store, stop_join_timeout_seconds=0)
     blocker = threading.Event()
@@ -239,6 +242,20 @@ def _empty_metadata_service() -> RuntimeMetadataService:
         cast(RunResultsArtifactReader, artifact_reader),
         cast(WarehouseMetadataReader, warehouse_reader),
     )
+
+
+def _empty_test_service() -> ModelTestService:
+    artifact_reader = _FakeWarehouseTestRunsReader({})
+    warehouse_reader = _FakeWarehouseTestRunsReader({})
+    return ModelTestService(cast(Any, artifact_reader), cast(Any, warehouse_reader))
+
+
+class _FakeWarehouseTestRunsReader:
+    def __init__(self, metadata: dict[str, object]) -> None:
+        self._metadata = metadata
+
+    def read_latest_runs(self) -> dict[str, object]:
+        return self._metadata
 
 
 def _write_run_results(

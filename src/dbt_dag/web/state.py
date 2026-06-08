@@ -20,6 +20,9 @@ from dbt_dag.partitions.warehouse import BigQueryPartitionWarehouseReader
 from dbt_dag.settings import Settings
 from dbt_dag.tasks.repository import NodeTaskRepository
 from dbt_dag.tasks.runner import DbtTaskRunner
+from dbt_dag.tests.artifacts import RunResultsTestReader
+from dbt_dag.tests.service import ModelTestService
+from dbt_dag.tests.warehouse import WarehouseTestRunsReader
 from dbt_dag.web.graph_state import GraphStateStore
 
 
@@ -34,6 +37,7 @@ class AppState:
     partition_repository: ModelPartitionRepository
     partition_service: ModelPartitionService
     partition_runner: ModelPartitionSyncRunner
+    test_service: ModelTestService
 
 
 StartupProgressCallback = Callable[[str], None]
@@ -78,6 +82,10 @@ def build_app_state(
         artifact_reader=RunResultsArtifactReader(paths.project_dir),
         warehouse_reader=WarehouseMetadataReader(warehouse_adapter, runtime_profile),
     )
+    test_service = ModelTestService(
+        RunResultsTestReader(paths.project_dir),
+        WarehouseTestRunsReader(warehouse_adapter, runtime_profile),
+    )
     partition_warehouse_reader = BigQueryPartitionWarehouseReader(
         warehouse_adapter, runtime_profile
     )
@@ -86,6 +94,7 @@ def build_app_state(
     graph_store = GraphStateStore(
         paths.manifest_path,
         metadata_service,
+        test_service,
         include_warehouse_on_init=False,
     )
     _report_progress(progress, f"Preparing background watcher for project {paths.project_dir.name}")
@@ -107,6 +116,7 @@ def build_app_state(
             partition_repository,
             partition_warehouse_reader,
         ),
+        test_service=test_service,
     )
 
 

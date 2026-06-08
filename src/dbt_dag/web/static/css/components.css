@@ -24,24 +24,48 @@
 		@apply size-2.5;
   }
 
-  .partition-day {
-		@apply size-2.5 rounded-full border;
+  .partition-day,
+  .status-dot {
+    @apply inline-flex size-3 text-[10px] font-mono font-semibold   items-center justify-center  shrink-0 rounded-full border;
   }
 
-  .partition-day-no-data {
-		@apply border-red-600 bg-transparent;
-  }
-
-  .partition-day-critical {
-		@apply border-red-600 bg-red-600;
-  }
-
-  .partition-day-low {
-		@apply border-amber-600 bg-amber-600;
-  }
-
+  .status-dot-passed,
   .partition-day-normal {
-		@apply border-green-600 bg-green-600;
+    @apply border-green-600 bg-green-600;
+  }
+
+  .status-dot-stale,
+  .partition-day-low {
+    @apply border-amber-600 bg-amber-600;
+  }
+
+  .status-dot-failed,
+  .partition-day-critical {
+    @apply border-red-600 bg-red-600;
+  }
+
+  .status-dot-missing,
+  .partition-day-no-data {
+    @apply border-red-600 bg-transparent;
+  }
+
+  .status-dot-loading {
+    position: relative;
+    overflow: hidden;
+  }
+
+  .status-dot-loading::after {
+    content: "";
+    position: absolute;
+    inset: -1px;
+    background: linear-gradient(
+      90deg,
+      transparent 0%,
+      rgb(255 255 255 / 0.18) 45%,
+      transparent 100%
+    );
+    transform: translateX(-140%);
+    animation: status-dot-shimmer 1.2s ease-in-out infinite;
   }
 
   .partition-day-high {
@@ -58,5 +82,11 @@
     .partition-month-grid {
       grid-template-columns: repeat(3, minmax(0, 1fr));
     }
+  }
+}
+
+@keyframes status-dot-shimmer {
+  100% {
+    transform: translateX(140%);
   }
 }

@@ -147,3 +147,19 @@
 - Context: The DAG view needs directed arrows, compound source/product grouping, and interactive browser-native pan/zoom without maintaining a custom SVG renderer.
 - Decision: Use Cytoscape.js with the fCoSE compound layout and constrained left-to-right placement bias for the graph view.
 - Consequences: Frontend graph rendering depends on `cytoscape`, `cytoscape-fcose`, and `cytoscape-layout-utilities`; source and product compounds continue to come from backend `GraphPayload.groups`, and the layout favors DAG flow without requiring exact layered ordering.
+
+## ADR-0019 Model Test Indicators
+
+- Created: 2026-06-08
+- Status: active
+- Context: Model nodes and inspectors need test visibility without blocking selection on a warehouse query.
+- Decision: Treat `manifest.json` as the source of test existence, `run_results.json` as the initial source of last-run test metadata, and `stg__dbt_test_runs` as the deferred enrichment source keyed by `test_unique_id`.
+- Consequences: Tests render immediately from local dbt artifacts, warehouse enrichment can override the same test after a debounce, and missing warehouse rows no longer imply missing tests.
+
+## ADR-0020 Inspector Extension Contract
+
+- Created: 2026-06-08
+- Status: active
+- Context: Inspector blocks are now added incrementally and need a stable integration pattern.
+- Decision: New inspectors must extend `NodeInspectorContextDTO`, add a dedicated `inspectors/<block>.py` context builder, register a route, add a shell placeholder in the required order, and declare whether the block is static, metadata-refreshable, or client-deferred.
+- Consequences: Inspector additions stay modular, block refresh behavior remains explicit, and documentation changes for inspectors are part of the implementation contract.

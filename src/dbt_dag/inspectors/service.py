@@ -4,6 +4,7 @@ from dbt_dag.metadata.models import empty_node_runtime_metadata
 from dbt_dag.metadata.models import NodeRuntimeMetadata
 from dbt_dag.partitions.models import ModelPartitionCalendarDTO
 from dbt_dag.tasks.models import NodeTaskDTO
+from dbt_dag.tests.models import ModelTestSummaryDTO
 from dbt_dag.web.state import AppState
 
 
@@ -16,11 +17,22 @@ class NodeInspectorContextFactory:
         *,
         include_tasks: bool = False,
         include_partition_calendar: bool = False,
+        include_tests: bool = False,
+        include_test_warehouse: bool = False,
     ) -> NodeInspectorContextDTO:
         snapshot = state.graph_store.snapshot()
         node = snapshot.manifest.graph_nodes()[node_id]
         runtime = snapshot.runtime_metadata.get(node_id) or empty_node_runtime_metadata()
         supports_partitions = self._supports_partitions(state, node)
+        tests_loading = (
+            include_tests and not include_test_warehouse and node.resource_type == "model"
+        )
+        tests = self._build_tests(
+            state=state,
+            node_id=node_id,
+            include_tests=include_tests,
+            include_test_warehouse=include_test_warehouse,
+        )
         return NodeInspectorContextDTO(
             selection_token=selection_token,
             node=node,
@@ -33,6 +45,8 @@ class NodeInspectorContextFactory:
                 supports_partitions=supports_partitions,
                 include_partition_calendar=include_partition_calendar,
             ),
+            tests=tests,
+            tests_loading=tests_loading,
             supports_partitions=supports_partitions,
         )
 
@@ -67,3 +81,23 @@ class NodeInspectorContextFactory:
         if not include_tasks:
             return []
         return state.task_repository.list_for_node(node_id)
+
+    def _build_tests(
+        self,
+        state: AppState,
+        node_id: str,
+        *,
+        include_tests: bool,
+        include_test_warehouse: bool,
+    ) -> ModelTestSummaryDTO | None:
+        if not include_tests:
+            return None
+        snapshot = state.graph_store.snapshot()
+        node = snapshot.manifest.graph_nodes()[node_id]
+        if node.resource_type != "model":
+            return None
+        summaries = state.test_service.load(
+            snapshot.manifest,
+            include_warehouse=include_test_warehouse,
+        )
+        return summaries.get(node_id)
