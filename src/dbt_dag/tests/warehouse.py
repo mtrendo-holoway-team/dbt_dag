@@ -48,7 +48,7 @@ select
   test_unique_id,
   model_unique_id,
   status,
-  {_RUN_STARTED_AT_COLUMN} as executed_at
+  executed_at
 from (
   select
     test_unique_id,

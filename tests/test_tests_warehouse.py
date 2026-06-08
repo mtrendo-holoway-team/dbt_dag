@@ -28,6 +28,7 @@ def test_warehouse_reader_uses_run_started_at_column() -> None:
 
     assert adapter.run_query.call_count == 1
     sql = adapter.run_query.call_args.args[0]
+    assert "select\n  test_unique_id,\n  model_unique_id,\n  status,\n  executed_at\nfrom (" in sql
     assert "run_started_at as executed_at" in sql
     assert "order by run_started_at desc" in sql
     assert "and run_started_at is not null" in sql
