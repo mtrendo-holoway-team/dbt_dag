@@ -1,10 +1,14 @@
 [tool.poetry]
 name = "dbt-dag"
-version = "0.1.0"
+version = "0.1.1"
 description = "Local dbt DAG visualizer"
 authors = ["dbt DAG contributors"]
 readme = "README.md"
 packages = [{ include = "dbt_dag", from = "src" }]
+include = [
+    { path = "src/dbt_dag/web/static/dist", format = ["sdist", "wheel"] },
+    { path = "src/dbt_dag/web/static/dist/.vite/manifest.json", format = ["sdist", "wheel"] },
+]
 
 [tool.poetry.dependencies]
 python = ">=3.11,<3.13"
