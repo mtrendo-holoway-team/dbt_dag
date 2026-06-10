@@ -1,0 +1,36 @@
+{
+  "_hotkeys-js-B7_6v5GH.js": {
+    "file": "assets/hotkeys-js-B7_6v5GH.js",
+    "name": "hotkeys-js"
+  },
+  "src/dbt_dag/web/static/css/tailwind.css": {
+    "file": "assets/styles-CQAs_Nfo.css",
+    "src": "src/dbt_dag/web/static/css/tailwind.css",
+    "isEntry": true
+  },
+  "src/dbt_dag/web/static/js/graph.ts": {
+    "file": "assets/graph-D6384srH.js",
+    "name": "graph",
+    "src": "src/dbt_dag/web/static/js/graph.ts",
+    "isEntry": true,
+    "imports": [
+      "_hotkeys-js-B7_6v5GH.js",
+      "src/dbt_dag/web/static/js/inspectors.ts"
+    ]
+  },
+  "src/dbt_dag/web/static/js/inspectors.ts": {
+    "file": "assets/inspectors-BrPso7Gf.js",
+    "name": "inspectors",
+    "src": "src/dbt_dag/web/static/js/inspectors.ts",
+    "isEntry": true
+  },
+  "src/dbt_dag/web/static/js/search.ts": {
+    "file": "assets/search-DNNodqEE.js",
+    "name": "search",
+    "src": "src/dbt_dag/web/static/js/search.ts",
+    "isEntry": true,
+    "imports": [
+      "_hotkeys-js-B7_6v5GH.js"
+    ]
+  }
+}
