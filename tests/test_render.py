@@ -468,8 +468,9 @@ def test_partition_template_includes_updated_at_opacity_and_tooltip(
         .render(**partition_inspector.build_template_context(inspector))
     )
 
-    assert 'style="opacity: 1;"' in html
+    assert 'style="opacity: 1; border-color: #4ade80;"' in html
     assert "MIN(_dbt_updated_at): 2026-06-04 11:00:00 MSK" in html
+    assert "Дата обновления: 2026-06-04" in html
 
 
 def test_partition_day_color_thresholds() -> None:
@@ -488,38 +489,38 @@ def test_partition_day_color_thresholds() -> None:
     assert partition_inspector._partition_day_color_class(2, 10.0, True) == "partition-day-normal"
 
 
-def test_partition_day_opacity_thresholds() -> None:
+def test_partition_day_freshness_thresholds() -> None:
     current_time = datetime(2026, 6, 4, 12, tzinfo=MSK)
 
     assert (
-        partition_inspector._partition_day_opacity_style(
+        partition_inspector._partition_day_freshness_style(
             datetime(2026, 6, 4, 10, tzinfo=MSK),
             current_time,
         )
-        == "opacity: 1;"
+        == "opacity: 1; border-color: #4ade80;"
     )
     assert (
-        partition_inspector._partition_day_opacity_style(
+        partition_inspector._partition_day_freshness_style(
             datetime(2026, 6, 3, 13, tzinfo=MSK),
             current_time,
         )
-        == "opacity: 0.8;"
+        == "opacity: 0.8; border-color: #16a34a;"
     )
     assert (
-        partition_inspector._partition_day_opacity_style(
+        partition_inspector._partition_day_freshness_style(
             datetime(2026, 6, 2, 13, tzinfo=MSK),
             current_time,
         )
-        == "opacity: 0.6;"
+        == "opacity: 0.6; border-color: #166534;"
     )
     assert (
-        partition_inspector._partition_day_opacity_style(
+        partition_inspector._partition_day_freshness_style(
             datetime(2026, 6, 2, 11, tzinfo=MSK),
             current_time,
         )
-        == "opacity: 0.3;"
+        == "opacity: 0.3; border-color: #27272a;"
     )
-    assert partition_inspector._partition_day_opacity_style(None, current_time) == ""
+    assert partition_inspector._partition_day_freshness_style(None, current_time) == ""
 
 
 def test_tests_template_renders_missing_state() -> None:

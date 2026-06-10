@@ -22,9 +22,9 @@ _COLOR_THRESHOLDS = (
     (1.2, "partition-day-normal"),
 )
 _PARTITION_OPACITY_THRESHOLDS = (
-    (2, "opacity: 1;"),
-    (24, "opacity: 0.8;"),
-    (48, "opacity: 0.6;"),
+    (2, ("opacity: 1;", "border-color: #4ade80;")),
+    (24, ("opacity: 0.8;", "border-color: #16a34a;")),
+    (48, ("opacity: 0.6;", "border-color: #166534;")),
 )
 
 
@@ -128,7 +128,7 @@ def _build_day(
             use_simple_presence_colors,
             is_current_day=day.date == current_date,
         ),
-        "opacity_style": _partition_day_opacity_style(day.partition_updated_at, now_msk()),
+        "freshness_style": _partition_day_freshness_style(day.partition_updated_at, now_msk()),
     }
 
 
@@ -207,7 +207,7 @@ def _partition_day_color_by_ratio(ratio: float) -> str:
     return "partition-day-high"
 
 
-def _partition_day_opacity_style(
+def _partition_day_freshness_style(
     partition_updated_at: datetime | None,
     current_time: datetime,
 ) -> str:
@@ -215,10 +215,10 @@ def _partition_day_opacity_style(
         return ""
     age_seconds = max((current_time - partition_updated_at).total_seconds(), 0.0)
     age_hours = age_seconds / 3600
-    for threshold_hours, opacity_style in _PARTITION_OPACITY_THRESHOLDS:
+    for threshold_hours, freshness_styles in _PARTITION_OPACITY_THRESHOLDS:
         if age_hours <= threshold_hours:
-            return opacity_style
-    return "opacity: 0.3;"
+            return " ".join(freshness_styles)
+    return "opacity: 0.3; border-color: #27272a;"
 
 
 def _partition_day_title(day: PartitionDayCellDTO) -> str:
@@ -230,6 +230,7 @@ def _partition_day_title(day: PartitionDayCellDTO) -> str:
     if day.partition_updated_at is None:
         return row_count_text
     return (
-        f"{row_count_text} - MIN(_dbt_updated_at): "
-        f"{day.partition_updated_at.strftime('%Y-%m-%d %H:%M:%S MSK')}"
+        f"{row_count_text}\n"
+        f"MIN(_dbt_updated_at): {day.partition_updated_at.strftime('%Y-%m-%d %H:%M:%S MSK')}\n"
+        f"Дата обновления: {day.partition_updated_at.strftime('%Y-%m-%d')}"
     )

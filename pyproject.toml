@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "dbt-dag"
-version = "0.1.4"
+version = "0.1.5"
 description = "Local dbt DAG visualizer"
 authors = ["dbt DAG contributors"]
 readme = "README.md"
