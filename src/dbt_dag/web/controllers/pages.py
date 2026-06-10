@@ -279,6 +279,7 @@ def _graph_payload(graph: Any) -> dict[str, Any]:
                 "column": node.column,
                 "resource_type": node.resource_type,
                 "package_name": node.package_name,
+                "tags": node.tags,
                 "description": node.description,
                 "indicators": node.indicators,
                 "runtime": {

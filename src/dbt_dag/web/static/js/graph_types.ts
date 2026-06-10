@@ -19,6 +19,7 @@ export type GraphNode = {
   column: string;
   resource_type: string;
   package_name: string;
+  tags: string[];
   description: string;
   indicators: string[];
   runtime: GraphNodeRuntime;

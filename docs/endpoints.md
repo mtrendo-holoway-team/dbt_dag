@@ -14,7 +14,7 @@
 
 ## API
 
-- `GET /api/graph`: Return graph nodes, runtime metadata, edges, group panels, columns, and project summary.
+- `GET /api/graph`: Return graph nodes with package and tag metadata, runtime metadata, edges, group panels, columns, and project summary.
 - `GET /api/metadata/revision`: Return the current graph metadata revision and refresh timestamp.
 - `GET /search?q=...`: Return up to 20 slash-command overlay matches with exact-or-fuzzy subsequence matching across node name, resource type, and unique id, including character positions for client-side highlight rendering.
 - `POST /actions/node/{node_id}/execute/{action_name}`: Stream `dbt build|run|test|compile --select <node>` output as newline-delimited JSON for model nodes only. `compile` includes compiled SQL in the final event payload for clipboard copy.

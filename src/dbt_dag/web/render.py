@@ -25,8 +25,9 @@ def render_page() -> str:
 <body class="h-screen overflow-hidden bg-zinc-950 text-zinc-100">
   <main class="grid h-screen grid-cols-[3fr_1fr]">
     <section class="relative min-w-0 border-r border-zinc-800">
-      <div class="absolute left-4 right-4 bottom-4 z-10 flex flex-wrap items-center gap-2">
+      <div class="absolute left-4 right-4 bottom-4 z-10 flex flex-col items-start gap-2">
         <div id="package-filters" class="flex min-w-0 flex-wrap items-center gap-2 text-xs text-zinc-300"></div>
+        <div id="tag-filters" class="flex min-w-0 flex-wrap items-center gap-2 text-xs text-zinc-300"></div>
       </div>
       <div
         id="graph-search-overlay"

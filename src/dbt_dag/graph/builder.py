@@ -59,6 +59,7 @@ def build_graph(
             column=classify_node(node),
             resource_type=node.resource_type,
             package_name=node.package_name,
+            tags=sorted(_node_tags(node)),
             description=node.description,
             indicators=[],
             runtime=_graph_runtime(

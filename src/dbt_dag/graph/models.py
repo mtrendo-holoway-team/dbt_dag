@@ -32,6 +32,7 @@ class GraphNode:
     column: str
     resource_type: str
     package_name: str
+    tags: list[str]
     description: str
     indicators: list[str]
     runtime: GraphNodeRuntime

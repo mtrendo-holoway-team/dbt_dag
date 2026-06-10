@@ -34,12 +34,15 @@ declare global {
 }
 
 type PackageChangeHandler = (packageName: string, enabled: boolean) => void | Promise<void>;
+type TagChangeHandler = (tag: string, enabled: boolean) => void | Promise<void>;
+type TagIsolateHandler = (tag: string) => void | Promise<void>;
 
 type FilterEvent = CustomEvent<{
   mode?: FilterMode;
 }>;
 
 const defaultHiddenPackages = new Set(["dbt_project_evaluator"]);
+const modelsWithoutTagKey = "__without_tag__";
 
 async function loadGraph(): Promise<void> {
   const container = document.getElementById("graph-root");
@@ -51,12 +54,16 @@ async function loadGraph(): Promise<void> {
   const activePackages = new Set(
     graphPackages(payload.nodes).filter((packageName) => !defaultHiddenPackages.has(packageName))
   );
+  const activeTags = new Set(graphTagCounts(payload.nodes).map(({ tag }) => tag));
+  let includeModelsWithoutTag = countModelsWithoutTag(payload.nodes) > 0;
   const { upstream, downstream } = buildAdjacency(payload);
   const state = {
     cy: createGraph(container),
     upstream,
     downstream,
     activePackages,
+    activeTags,
+    includeModelsWithoutTag,
     selectedNodeId: null as string | null,
     filterMode: null as FilterMode | null,
     isolatedNodeIds: null as Set<string> | null
@@ -82,13 +89,65 @@ async function loadGraph(): Promise<void> {
     } else {
       nextPackages.delete(packageName);
     }
-    const anchor = getCenterAnchor(state.cy, visibleNodeIds(payload.nodes, nextPackages));
+    const anchor = getCenterAnchor(
+      state.cy,
+      visibleNodeIds(
+        payload.nodes,
+        nextPackages,
+        state.activeTags,
+        state.includeModelsWithoutTag
+      )
+    );
     state.activePackages = nextPackages;
+    clearHiddenSelection();
+    await renderCurrentGraph(false, anchor);
+  };
+  const tagChangeHandler = async (tag: string, enabled: boolean) => {
+    const nextTags = new Set(state.activeTags);
+    let nextIncludeModelsWithoutTag = state.includeModelsWithoutTag;
+    if (tag === modelsWithoutTagKey) {
+      nextIncludeModelsWithoutTag = enabled;
+    } else if (enabled) {
+      nextTags.add(tag);
+    } else {
+      nextTags.delete(tag);
+    }
+    const anchor = getCenterAnchor(
+      state.cy,
+      visibleNodeIds(payload.nodes, state.activePackages, nextTags, nextIncludeModelsWithoutTag)
+    );
+    state.activeTags = nextTags;
+    state.includeModelsWithoutTag = nextIncludeModelsWithoutTag;
+    clearHiddenSelection();
+    await renderCurrentGraph(false, anchor);
+  };
+  const tagIsolateHandler = async (tag: string) => {
+    const nextTags =
+      tag === modelsWithoutTagKey ? new Set<string>() : new Set<string>([tag]);
+    const nextIncludeModelsWithoutTag = tag === modelsWithoutTagKey;
+    const anchor = getCenterAnchor(
+      state.cy,
+      visibleNodeIds(
+        payload.nodes,
+        state.activePackages,
+        nextTags,
+        nextIncludeModelsWithoutTag
+      )
+    );
+    state.activeTags = nextTags;
+    state.includeModelsWithoutTag = nextIncludeModelsWithoutTag;
     clearHiddenSelection();
     await renderCurrentGraph(false, anchor);
   };
 
   renderPackageFilters(payload.nodes, activePackages, packageChangeHandler);
+  renderTagFilters(
+    payload.nodes,
+    activeTags,
+    includeModelsWithoutTag,
+    tagChangeHandler,
+    tagIsolateHandler
+  );
   await renderCurrentGraph(true);
   observeResize(container, state);
   window.setInterval(() => {
@@ -161,6 +220,8 @@ async function loadGraph(): Promise<void> {
       state.cy,
       payload,
       state.activePackages,
+      state.activeTags,
+      state.includeModelsWithoutTag,
       state.selectedNodeId,
       state.filterMode,
       fit,
@@ -238,7 +299,15 @@ async function loadGraph(): Promise<void> {
   }
 
   function clearHiddenSelection(): void {
-    if (state.selectedNodeId && !visibleNodeIds(payload.nodes, state.activePackages).has(state.selectedNodeId)) {
+    if (
+      state.selectedNodeId &&
+      !visibleNodeIds(
+        payload.nodes,
+        state.activePackages,
+        state.activeTags,
+        state.includeModelsWithoutTag
+      ).has(state.selectedNodeId)
+    ) {
       state.selectedNodeId = null;
       state.filterMode = null;
       state.isolatedNodeIds = null;
@@ -246,7 +315,12 @@ async function loadGraph(): Promise<void> {
   }
 
   function currentVisibleNodeIds(): Set<string> {
-    const activeNodeIds = visibleNodeIds(payload.nodes, state.activePackages);
+    const activeNodeIds = visibleNodeIds(
+      payload.nodes,
+      state.activePackages,
+      state.activeTags,
+      state.includeModelsWithoutTag
+    );
     if (!state.isolatedNodeIds) return activeNodeIds;
     return new Set([...activeNodeIds].filter((nodeId) => state.isolatedNodeIds?.has(nodeId)));
   }
@@ -269,7 +343,21 @@ async function loadGraph(): Promise<void> {
     const nextResponse = await fetch("/api/graph");
     const nextPayload = (await nextResponse.json()) as GraphPayload;
     const nextPackages = reconcileActivePackages(payload, nextPayload, state.activePackages);
-    const anchor = getCenterAnchor(state.cy, visibleNodeIds(nextPayload.nodes, nextPackages));
+    const nextTagState = reconcileActiveTags(
+      payload,
+      nextPayload,
+      state.activeTags,
+      state.includeModelsWithoutTag
+    );
+    const anchor = getCenterAnchor(
+      state.cy,
+      visibleNodeIds(
+        nextPayload.nodes,
+        nextPackages,
+        nextTagState.activeTags,
+        nextTagState.includeModelsWithoutTag
+      )
+    );
     if (currentRefresh !== refreshVersion) return;
 
     payload = nextPayload;
@@ -277,8 +365,17 @@ async function loadGraph(): Promise<void> {
     state.upstream = adjacency.upstream;
     state.downstream = adjacency.downstream;
     state.activePackages = nextPackages;
+    state.activeTags = nextTagState.activeTags;
+    state.includeModelsWithoutTag = nextTagState.includeModelsWithoutTag;
     clearHiddenSelection();
     renderPackageFilters(payload.nodes, state.activePackages, packageChangeHandler);
+    renderTagFilters(
+      payload.nodes,
+      state.activeTags,
+      state.includeModelsWithoutTag,
+      tagChangeHandler,
+      tagIsolateHandler
+    );
     await renderCurrentGraph(false, anchor);
     if (state.selectedNodeId) {
       refreshInspectorMetadataBlocks();
@@ -350,9 +447,37 @@ function graphPackages(nodes: GraphNode[]): string[] {
   );
 }
 
-function visibleNodeIds(nodes: GraphNode[], activePackages: Set<string>): Set<string> {
+function graphTagCounts(nodes: GraphNode[]): Array<{ tag: string; count: number }> {
+  const counts = new Map<string, number>();
+  for (const node of nodes) {
+    if (node.resource_type !== "model") continue;
+    for (const tag of node.tags) {
+      counts.set(tag, (counts.get(tag) ?? 0) + 1);
+    }
+  }
+  return [...counts.entries()]
+    .map(([tag, count]) => ({ tag, count }))
+    .sort((left, right) => right.count - left.count || left.tag.localeCompare(right.tag));
+}
+
+function countModelsWithoutTag(nodes: GraphNode[]): number {
+  return nodes.filter((node) => node.resource_type === "model" && node.tags.length === 0).length;
+}
+
+function visibleNodeIds(
+  nodes: GraphNode[],
+  activePackages: Set<string>,
+  activeTags: Set<string>,
+  includeModelsWithoutTag: boolean
+): Set<string> {
   return new Set(
-    nodes.filter((node) => activePackages.has(node.package_name)).map((node) => node.id)
+    nodes
+      .filter(
+        (node) =>
+          activePackages.has(node.package_name) &&
+          matchesTagFilter(node, activeTags, includeModelsWithoutTag)
+      )
+      .map((node) => node.id)
   );
 }
 
@@ -370,6 +495,27 @@ function reconcileActivePackages(
     }
   }
   return result;
+}
+
+function reconcileActiveTags(
+  previousPayload: GraphPayload,
+  nextPayload: GraphPayload,
+  activeTags: Set<string>,
+  includeModelsWithoutTag: boolean
+): { activeTags: Set<string>; includeModelsWithoutTag: boolean } {
+  const previousTags = new Set(graphTagCounts(previousPayload.nodes).map(({ tag }) => tag));
+  const nextTags = graphTagCounts(nextPayload.nodes).map(({ tag }) => tag);
+  const result = new Set([...activeTags].filter((tag) => nextTags.includes(tag)));
+  for (const tag of nextTags) {
+    if (!previousTags.has(tag)) {
+      result.add(tag);
+    }
+  }
+  return {
+    activeTags: result,
+    includeModelsWithoutTag:
+      countModelsWithoutTag(nextPayload.nodes) > 0 ? includeModelsWithoutTag : false
+  };
 }
 
 function renderPackageFilters(
@@ -399,6 +545,76 @@ function renderPackageFilters(
       return label;
     })
   );
+}
+
+function renderTagFilters(
+  nodes: GraphNode[],
+  activeTags: Set<string>,
+  includeModelsWithoutTag: boolean,
+  onChange: TagChangeHandler,
+  onIsolate: TagIsolateHandler
+): void {
+  const container = document.getElementById("tag-filters");
+  if (!container) return;
+
+  const tagElements = graphTagCounts(nodes).map(({ tag, count }) =>
+    createFilterCheckbox(
+      `${tag} (${count})`,
+      activeTags.has(tag),
+      (checked) => onChange(tag, checked),
+      () => onIsolate(tag)
+    )
+  );
+  const withoutTagCount = countModelsWithoutTag(nodes);
+  const withoutTagElement =
+    withoutTagCount > 0
+      ? createFilterCheckbox(
+          `without tag (${withoutTagCount})`,
+          includeModelsWithoutTag,
+          (checked) => onChange(modelsWithoutTagKey, checked),
+          () => onIsolate(modelsWithoutTagKey)
+        )
+      : null;
+
+  container.replaceChildren(...tagElements, ...(withoutTagElement ? [withoutTagElement] : []));
+
+  function createFilterCheckbox(
+    labelText: string,
+    checked: boolean,
+    onToggle: (checked: boolean) => void,
+    onContextMenu: () => void
+  ): HTMLLabelElement {
+    const label = document.createElement("label");
+    label.className =
+      "flex items-center gap-1 rounded border border-zinc-700 bg-zinc-900 px-2 py-2";
+    label.title = "Right-click to show only this tag";
+    label.addEventListener("contextmenu", (event) => {
+      event.preventDefault();
+      onContextMenu();
+    });
+
+    const checkbox = document.createElement("input");
+    checkbox.type = "checkbox";
+    checkbox.className = "accent-cyan-500";
+    checkbox.checked = checked;
+    checkbox.addEventListener("change", () => onToggle(checkbox.checked));
+
+    const text = document.createElement("span");
+    text.textContent = labelText;
+
+    label.append(checkbox, text);
+    return label;
+  }
+}
+
+function matchesTagFilter(
+  node: GraphNode,
+  activeTags: Set<string>,
+  includeModelsWithoutTag: boolean
+): boolean {
+  if (node.resource_type !== "model") return true;
+  if (node.tags.length === 0) return includeModelsWithoutTag;
+  return node.tags.some((tag) => activeTags.has(tag));
 }
 
 function openInspector(nodeId: string): void {

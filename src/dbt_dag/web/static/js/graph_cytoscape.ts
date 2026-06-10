@@ -84,6 +84,8 @@ export async function renderGraph(
   cy: Core,
   payload: GraphPayload,
   activePackages: Set<string>,
+  activeTags: Set<string>,
+  includeModelsWithoutTag: boolean,
   selectedNodeId: string | null,
   filterMode: FilterMode | null,
   fit: boolean,
@@ -92,7 +94,7 @@ export async function renderGraph(
   upstream: Map<string, Set<string>>,
   downstream: Map<string, Set<string>>
 ): Promise<void> {
-  const visiblePayload = filterPayload(payload, activePackages);
+  const visiblePayload = filterPayload(payload, activePackages, activeTags, includeModelsWithoutTag);
   cy.off("tap", "node[kind = 'node']");
   cy.batch(() => {
     cy.elements().remove();
@@ -486,10 +488,29 @@ function applyAnchor(cy: Core, anchor: ViewAnchor): void {
   });
 }
 
-function filterPayload(payload: GraphPayload, activePackages: Set<string>): GraphPayload {
-  const nodes = payload.nodes.filter((node) => activePackages.has(node.package_name));
+function filterPayload(
+  payload: GraphPayload,
+  activePackages: Set<string>,
+  activeTags: Set<string>,
+  includeModelsWithoutTag: boolean
+): GraphPayload {
+  const nodes = payload.nodes.filter(
+    (node) =>
+      activePackages.has(node.package_name) &&
+      matchesTagFilter(node, activeTags, includeModelsWithoutTag)
+  );
   const nodeIds = new Set(nodes.map((node) => node.id));
   return filterPayloadByNodeIds(payload, nodeIds);
+}
+
+function matchesTagFilter(
+  node: GraphNode,
+  activeTags: Set<string>,
+  includeModelsWithoutTag: boolean
+): boolean {
+  if (node.resource_type !== "model") return true;
+  if (node.tags.length === 0) return includeModelsWithoutTag;
+  return node.tags.some((tag) => activeTags.has(tag));
 }
 
 function filterPayloadByNodeIds(payload: GraphPayload, nodeIds: Set<string>): GraphPayload {
