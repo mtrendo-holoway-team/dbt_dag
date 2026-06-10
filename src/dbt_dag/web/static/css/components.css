@@ -8,20 +8,22 @@
   }
 
   .partition-month-grid {
-		@apply grid gap-3;
+    @apply grid gap-3;
+    direction: rtl;
     grid-template-columns: repeat(1, minmax(0, 1fr));
   }
 
   .partition-month {
     @apply flex flex-col gap-1.5;
+    direction: ltr;
   }
 
   .partition-days {
-		@apply grid grid-cols-7 gap-1;
+    @apply grid grid-cols-7 gap-1;
   }
 
   .partition-day-spacer {
-		@apply size-2.5;
+    @apply size-2.5;
   }
 
   .partition-day,
@@ -69,7 +71,7 @@
   }
 
   .partition-day-high {
-		@apply border-lime-400 bg-lime-400;
+    @apply border-lime-400 bg-lime-400;
   }
 
   @media (min-width: 768px) {

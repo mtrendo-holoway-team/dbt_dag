@@ -65,7 +65,7 @@ class NodeInspectorContextFactory:
             return None
         calendar = state.partition_service.build_calendar(node.unique_id, runtime.last_updated_at)
         if calendar.is_stale and not calendar.is_refreshing:
-            state.partition_runner.start_refresh(node.unique_id)
+            state.partition_runner.start_refresh(node)
             calendar = state.partition_service.build_calendar(
                 node.unique_id, runtime.last_updated_at
             )

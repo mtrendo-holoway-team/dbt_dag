@@ -1,4 +1,5 @@
 from datetime import date
+from datetime import datetime
 import json
 from pathlib import Path
 import pytest
@@ -16,6 +17,7 @@ from dbt_dag.partitions.models import PartitionDayCellDTO
 from dbt_dag.partitions.models import PartitionFillLevel
 from dbt_dag.partitions.models import PartitionMonthDTO
 from dbt_dag.partitions.models import PartitionSyncStatus
+from dbt_dag.shared.time import MSK
 from dbt_dag.tests.models import ModelTestResultDTO
 from dbt_dag.tests.models import ModelTestStatus
 from dbt_dag.tests.models import ModelTestSummaryDTO
@@ -414,6 +416,62 @@ def test_partition_template_uses_future_days_when_history_is_short() -> None:
     )
 
 
+def test_partition_template_includes_updated_at_opacity_and_tooltip(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        partition_inspector,
+        "now_msk",
+        lambda: datetime(2026, 6, 4, 12, tzinfo=MSK),
+    )
+    calendar = ModelPartitionCalendarDTO(
+        model_unique_id="model.demo.stg_orders",
+        range_start=None,
+        range_end=date(2026, 6, 4),
+        median_row_count=10.0,
+        months=[
+            PartitionMonthDTO(
+                year=2026,
+                month_label="Июнь",
+                leading_empty_days=0,
+                days=[
+                    PartitionDayCellDTO(
+                        date=date(2026, 6, 1),
+                        row_count=10,
+                        fill_level=PartitionFillLevel.FULL,
+                        partition_updated_at=datetime(2026, 6, 4, 11, tzinfo=MSK),
+                    )
+                ],
+            )
+        ],
+        is_stale=False,
+        is_refreshing=False,
+        last_synced_at=None,
+        sync_status=PartitionSyncStatus.IDLE,
+        last_error="",
+    )
+    inspector = _inspector_context(resource_type="model")
+    inspector = NodeInspectorContextDTO(
+        selection_token=inspector.selection_token,
+        node=inspector.node,
+        runtime=inspector.runtime,
+        tasks=inspector.tasks,
+        partition_calendar=calendar,
+        tests=inspector.tests,
+        tests_loading=inspector.tests_loading,
+        supports_partitions=inspector.supports_partitions,
+    )
+
+    html = (
+        _template_engine()
+        .get_template(partition_inspector.TEMPLATE_NAME)
+        .render(**partition_inspector.build_template_context(inspector))
+    )
+
+    assert 'style="opacity: 1;"' in html
+    assert "MIN(_dbt_updated_at): 2026-06-04 11:00:00 MSK" in html
+
+
 def test_partition_day_color_thresholds() -> None:
     assert (
         partition_inspector._partition_day_color_class(None, 10.0, False) == "partition-day-no-data"
@@ -428,6 +486,40 @@ def test_partition_day_color_thresholds() -> None:
     assert partition_inspector._partition_day_color_class(10, 10.0, False) == "partition-day-normal"
     assert partition_inspector._partition_day_color_class(13, 10.0, False) == "partition-day-high"
     assert partition_inspector._partition_day_color_class(2, 10.0, True) == "partition-day-normal"
+
+
+def test_partition_day_opacity_thresholds() -> None:
+    current_time = datetime(2026, 6, 4, 12, tzinfo=MSK)
+
+    assert (
+        partition_inspector._partition_day_opacity_style(
+            datetime(2026, 6, 4, 10, tzinfo=MSK),
+            current_time,
+        )
+        == "opacity: 1;"
+    )
+    assert (
+        partition_inspector._partition_day_opacity_style(
+            datetime(2026, 6, 3, 13, tzinfo=MSK),
+            current_time,
+        )
+        == "opacity: 0.8;"
+    )
+    assert (
+        partition_inspector._partition_day_opacity_style(
+            datetime(2026, 6, 2, 13, tzinfo=MSK),
+            current_time,
+        )
+        == "opacity: 0.6;"
+    )
+    assert (
+        partition_inspector._partition_day_opacity_style(
+            datetime(2026, 6, 2, 11, tzinfo=MSK),
+            current_time,
+        )
+        == "opacity: 0.3;"
+    )
+    assert partition_inspector._partition_day_opacity_style(None, current_time) == ""
 
 
 def test_tests_template_renders_missing_state() -> None:

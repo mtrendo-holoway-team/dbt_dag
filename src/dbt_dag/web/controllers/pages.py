@@ -202,7 +202,7 @@ class PagesController(Controller):
         node = snapshot.manifest.graph_nodes().get(node_id)
         if node is None:
             return Response(content="", media_type=MediaType.HTML, status_code=404)
-        state.partition_runner.start_refresh(node_id)
+        state.partition_runner.start_refresh(node)
         inspector = _context_factory.build(
             state,
             node_id,

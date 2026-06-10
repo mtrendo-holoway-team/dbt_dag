@@ -72,6 +72,7 @@ class ModelPartitionRepository:
                         partition_key=row.partition_key,
                         row_count=row.row_count,
                         source_inserted_at=row.source_inserted_at,
+                        partition_updated_at=row.partition_updated_at,
                         synced_at=synced_at,
                     )
                 )
@@ -133,6 +134,7 @@ class ModelPartitionRepository:
             row_count=record.row_count,
             source_inserted_at=_normalize_datetime(record.source_inserted_at),
             synced_at=normalize_to_msk(record.synced_at),
+            partition_updated_at=_normalize_datetime(record.partition_updated_at),
         )
 
     def _to_sync_state(self, record: ModelPartitionSyncStateRecord) -> ModelPartitionSyncState:

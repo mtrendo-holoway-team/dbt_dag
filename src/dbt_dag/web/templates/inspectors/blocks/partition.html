@@ -25,12 +25,12 @@
                     </div>
                     <div class="partition-month-grid">
                         {% for month in year_group.months %}
-                            <section class="flex flex-col gap-1">
+                            <section class="partition-month">
                                 <h3 class="text-sm font-light text-right leading-none text-zinc-100">{{ month.month_label }}</h3>
                                 <div class="partition-days">
                                     {% for _ in month.leading_empty_days %}<div class="partition-day-spacer"></div>{% endfor %}
                                     {% for day in month.days %}
-                                        <div class="partition-day {{ day.color_class }}" title="{{ day.title }}"></div>
+                                        <div class="partition-day {{ day.color_class }}" title="{{ day.title }}" style="{{ day.opacity_style }}"></div>
                                         {%
                                         endfor %}
                                     </div>

@@ -216,7 +216,7 @@ def test_refresh_partition_action_starts_background_sync(
     )
 
     assert response.status_code == 200
-    partition_runner.start_refresh.assert_called_with("model.demo.stg_orders")
+    assert partition_runner.start_refresh.call_args.args[0].unique_id == "model.demo.stg_orders"
     assert 'id="inspector-block-partition-token123"' in response.text
 
 

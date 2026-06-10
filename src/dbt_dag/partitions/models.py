@@ -23,6 +23,7 @@ class PartitionSnapshotRow:
     partition_date: date
     row_count: int
     source_inserted_at: datetime | None
+    partition_updated_at: datetime | None = None
 
 
 @dataclass(frozen=True)
@@ -33,6 +34,7 @@ class ModelPartitionSnapshot:
     row_count: int
     source_inserted_at: datetime | None
     synced_at: datetime
+    partition_updated_at: datetime | None = None
 
 
 @dataclass(frozen=True)
@@ -50,6 +52,7 @@ class PartitionDayCellDTO:
     date: date
     row_count: int | None
     fill_level: PartitionFillLevel
+    partition_updated_at: datetime | None = None
 
 
 @dataclass(frozen=True)

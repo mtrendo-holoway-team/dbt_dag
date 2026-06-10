@@ -58,8 +58,13 @@ class ModelPartitionService:
             and local_source_inserted_at < remote_model_updated_at
         )
         row_count_by_date = _row_count_by_date(snapshot)
+        partition_updated_at_by_date = _partition_updated_at_by_date(snapshot)
         median_row_count = _median_row_count(row_count_by_date)
-        months = _build_months(row_count_by_date, median_row_count)
+        months = _build_months(
+            row_count_by_date,
+            partition_updated_at_by_date,
+            median_row_count,
+        )
         range_start = min(row_count_by_date) if row_count_by_date else None
         sync_status = sync_state.sync_status if sync_state is not None else PartitionSyncStatus.IDLE
         last_error = sync_state.last_error if sync_state is not None else ""
@@ -91,8 +96,22 @@ def _median_row_count(row_count_by_date: dict[date, int]) -> float | None:
     return float(median(row_count_by_date.values()))
 
 
+def _partition_updated_at_by_date(
+    snapshot: list[ModelPartitionSnapshot],
+) -> dict[date, datetime | None]:
+    result: dict[date, datetime | None] = {}
+    for item in snapshot:
+        if item.partition_updated_at is None:
+            continue
+        current = result.get(item.partition_date)
+        if current is None or item.partition_updated_at < current:
+            result[item.partition_date] = item.partition_updated_at
+    return result
+
+
 def _build_months(
     row_count_by_date: dict[date, int],
+    partition_updated_at_by_date: dict[date, datetime | None],
     median_row_count: float | None,
 ) -> list[PartitionMonthDTO]:
     if not row_count_by_date:
@@ -112,6 +131,7 @@ def _build_months(
                 date=current_date,
                 row_count=row_count_by_date.get(current_date),
                 fill_level=_fill_level(row_count_by_date.get(current_date), median_row_count),
+                partition_updated_at=partition_updated_at_by_date.get(current_date),
             )
             for current_date in _date_range(month_start, visible_end)
         ]

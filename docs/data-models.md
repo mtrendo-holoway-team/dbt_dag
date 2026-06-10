@@ -11,7 +11,7 @@
 - `NodeTaskDTO`: persisted dbt action task state for a node.
 - `ModelTestResultDTO`: one dbt test attached to a model, with the latest known status and execution time.
 - `ModelTestSummaryDTO`: per-model aggregate test status used by the inspector and graph node indicator.
-- `PartitionDayCellDTO`: one calendar day for partition coverage with `empty`, `half`, or `full` fill level.
+- `PartitionDayCellDTO`: one calendar day for partition coverage with `empty`, `half`, or `full` fill level, plus optional per-day `MIN(_dbt_updated_at)` freshness timestamp in MSK.
 - `ModelPartitionCalendarDTO`: per-model partition calendar state, median row count, sync status, stale flag, and month groups.
 - `GraphPayload`: graph nodes now include a compact `test_indicator` status in addition to runtime metadata.
 
@@ -72,6 +72,7 @@ Stores the current local cache of partition row counts for one model.
 - `partition_key`: original partition identifier from `stg__dbt_run_partition_info`.
 - `row_count`: cached row count for the partition snapshot row.
 - `source_inserted_at`: warehouse `inserted_at` for the source snapshot row.
+- `partition_updated_at`: optional `MIN(_dbt_updated_at)` timestamp for the underlying table partition, normalized to MSK when the model relation exposes that column.
 - `synced_at`: MSK-normalized timestamp when the local cache was replaced.
 
 ### `model_partition_sync_state`

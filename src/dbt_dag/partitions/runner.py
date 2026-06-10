@@ -1,6 +1,7 @@
 import logging
 import threading
 
+from dbt_dag.manifest.models import DbtManifestNode
 from dbt_dag.partitions.repository import ModelPartitionRepository
 from dbt_dag.partitions.warehouse import BigQueryPartitionWarehouseReader
 
@@ -18,7 +19,8 @@ class ModelPartitionSyncRunner:
         self._active_models: set[str] = set()
         self._lock = threading.Lock()
 
-    def start_refresh(self, model_unique_id: str) -> bool:
+    def start_refresh(self, node: DbtManifestNode) -> bool:
+        model_unique_id = node.unique_id
         with self._lock:
             if model_unique_id in self._active_models:
                 return False
@@ -27,7 +29,7 @@ class ModelPartitionSyncRunner:
         thread = threading.Thread(
             target=self._run_refresh,
             name=f"partition-sync-{model_unique_id}",
-            args=(model_unique_id,),
+            args=(node,),
             daemon=True,
         )
         thread.start()
@@ -37,9 +39,10 @@ class ModelPartitionSyncRunner:
         with self._lock:
             return model_unique_id in self._active_models
 
-    def _run_refresh(self, model_unique_id: str) -> None:
+    def _run_refresh(self, node: DbtManifestNode) -> None:
+        model_unique_id = node.unique_id
         try:
-            snapshot = self._warehouse_reader.fetch_latest_partition_snapshot(model_unique_id)
+            snapshot = self._warehouse_reader.fetch_latest_partition_snapshot(node)
             self._repository.replace_snapshot(model_unique_id, snapshot)
         except (OSError, RuntimeError, ValueError) as exc:
             logger.exception(

@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 from datetime import date
+from datetime import datetime
 from statistics import median
 from typing import Any
 
@@ -11,6 +12,7 @@ from dbt_dag.inspectors.utils import partition_status_label
 from dbt_dag.partitions.models import ModelPartitionCalendarDTO
 from dbt_dag.partitions.models import PartitionDayCellDTO
 from dbt_dag.partitions.models import PartitionMonthDTO
+from dbt_dag.shared.time import now_msk
 
 TEMPLATE_NAME = "inspectors/blocks/partition.html"
 _REFERENCE_WINDOW = 7
@@ -18,6 +20,11 @@ _COLOR_THRESHOLDS = (
     (0.25, "partition-day-critical"),
     (0.8, "partition-day-low"),
     (1.2, "partition-day-normal"),
+)
+_PARTITION_OPACITY_THRESHOLDS = (
+    (2, "opacity: 1;"),
+    (24, "opacity: 0.8;"),
+    (48, "opacity: 0.6;"),
 )
 
 
@@ -112,11 +119,7 @@ def _build_day(
     current_date: date,
 ) -> dict[str, str]:
     day = day_reference.day
-    title = (
-        f"{day.date.isoformat()} - {day.row_count} строк"
-        if day.row_count is not None
-        else f"{day.date.isoformat()} - Нет данных"
-    )
+    title = _partition_day_title(day)
     return {
         "title": title,
         "color_class": _partition_day_color_class(
@@ -125,6 +128,7 @@ def _build_day(
             use_simple_presence_colors,
             is_current_day=day.date == current_date,
         ),
+        "opacity_style": _partition_day_opacity_style(day.partition_updated_at, now_msk()),
     }
 
 
@@ -201,3 +205,31 @@ def _partition_day_color_by_ratio(ratio: float) -> str:
         if ratio < threshold:
             return color_class
     return "partition-day-high"
+
+
+def _partition_day_opacity_style(
+    partition_updated_at: datetime | None,
+    current_time: datetime,
+) -> str:
+    if partition_updated_at is None:
+        return ""
+    age_seconds = max((current_time - partition_updated_at).total_seconds(), 0.0)
+    age_hours = age_seconds / 3600
+    for threshold_hours, opacity_style in _PARTITION_OPACITY_THRESHOLDS:
+        if age_hours <= threshold_hours:
+            return opacity_style
+    return "opacity: 0.3;"
+
+
+def _partition_day_title(day: PartitionDayCellDTO) -> str:
+    row_count_text = (
+        f"{day.date.isoformat()} - {day.row_count} строк"
+        if day.row_count is not None
+        else f"{day.date.isoformat()} - Нет данных"
+    )
+    if day.partition_updated_at is None:
+        return row_count_text
+    return (
+        f"{row_count_text} - MIN(_dbt_updated_at): "
+        f"{day.partition_updated_at.strftime('%Y-%m-%d %H:%M:%S MSK')}"
+    )
