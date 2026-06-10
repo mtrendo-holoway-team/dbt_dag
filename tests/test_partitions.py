@@ -3,6 +3,9 @@ from datetime import datetime
 from pathlib import Path
 from unittest.mock import Mock
 
+from sqlalchemy import inspect
+from sqlalchemy.sql import text
+
 from dbt_dag.db.session import create_db_engine
 from dbt_dag.db.session import create_session_factory
 from dbt_dag.db.session import init_db
@@ -151,6 +154,37 @@ def test_partition_repository_persists_partition_updated_at(tmp_path: Path) -> N
     snapshot = repository.list_snapshot("model.demo.stg_orders")
 
     assert snapshot[0].partition_updated_at == datetime(2026, 6, 4, 8, tzinfo=MSK)
+
+
+def test_init_db_adds_missing_partition_updated_at_column(tmp_path: Path) -> None:
+    engine = create_db_engine(tmp_path / "legacy.sqlite")
+    with engine.begin() as connection:
+        connection.execute(
+            text(
+                """
+                CREATE TABLE model_partition_snapshots (
+                    id INTEGER PRIMARY KEY,
+                    model_unique_id VARCHAR(512) NOT NULL,
+                    partition_date DATE NOT NULL,
+                    partition_key VARCHAR(255) NOT NULL,
+                    row_count INTEGER NOT NULL,
+                    source_inserted_at DATETIME NULL,
+                    synced_at DATETIME NOT NULL
+                )
+                """
+            )
+        )
+
+    init_db(engine)
+
+    inspector = inspect(engine)
+    column_names = {
+        str(column["name"])
+        for column in inspector.get_columns("model_partition_snapshots")
+        if column.get("name") is not None
+    }
+
+    assert "partition_updated_at" in column_names
 
 
 def test_partition_service_marks_missing_cache_as_stale(tmp_path: Path) -> None:
