@@ -21,7 +21,7 @@ def test_task_repository_persists_state_transitions(tmp_path: Path) -> None:
     init_db(engine)
     repository = NodeTaskRepository(create_session_factory(engine))
 
-    task = repository.create("model.demo.stg_orders", "dbt build --select model.demo.stg_orders")
+    task = repository.create("model.demo.stg_orders", "dbt build --select stg_orders")
     repository.mark_running(task.task_id)
     repository.mark_finished(task.task_id, exit_code=0, logs_excerpt="done")
 
@@ -58,6 +58,35 @@ def test_stream_action_yields_chunks_and_refreshes_metadata(
     assert tasks[0].status == TaskStatus.SUCCEEDED
     assert tasks[0].logs_excerpt == "hello\nworld"
     on_finished.assert_called_once_with()
+
+
+def test_stream_action_uses_model_name_without_project_dir_or_target(
+    dbt_project: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    profiles_dir: Path,
+    tmp_path: Path,
+) -> None:
+    repository = _repository(tmp_path)
+    runner = DbtTaskRunner(repository, _runtime_profile(dbt_project, profiles_dir))
+    node = _model_node()
+    captured: dict[str, object] = {}
+
+    def fake_popen(*args: object, **kwargs: object) -> "_FakeProcess":
+        captured["command"] = args[0]
+        return _FakeProcess(["ok\n"], 0)
+
+    monkeypatch.setattr("dbt_dag.tasks.runner.subprocess.Popen", fake_popen)
+
+    list(runner.stream_action(node, NodeAction.RUN))
+
+    assert captured["command"] == [
+        "dbt",
+        "run",
+        "--select",
+        "stg_orders",
+        "--profiles-dir",
+        str(profiles_dir),
+    ]
 
 
 def test_compile_action_returns_compiled_sql_without_refresh(

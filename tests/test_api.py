@@ -154,7 +154,7 @@ def test_model_action_endpoint_streams_ndjson(dbt_project: Path, tmp_path: Path)
     task_runner.supports_action.return_value = True
     task_runner.stream_action.return_value = iter(
         [
-            '{"event":"start","command":"dbt run --select model.demo.stg_orders"}\n',
+            '{"event":"start","command":"dbt run --select stg_orders"}\n',
             '{"event":"finish","ok":true,"exit_code":0}\n',
         ]
     )

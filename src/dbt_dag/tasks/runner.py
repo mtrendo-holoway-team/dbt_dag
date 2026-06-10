@@ -35,7 +35,7 @@ class DbtTaskRunner:
         return node.resource_type == "model"
 
     def stream_action(self, node: DbtManifestNode, action: NodeAction) -> Iterator[str]:
-        command = self._build_command(node.unique_id, action)
+        command = self._build_command(node, action)
         task = self._repository.create(node_id=node.unique_id, command=" ".join(command))
         self._repository.mark_running(task.task_id)
         yield self._encode_event(
@@ -92,18 +92,14 @@ class DbtTaskRunner:
             compiled_sql=finished.compiled_sql,
         )
 
-    def _build_command(self, node_id: str, action: NodeAction) -> list[str]:
+    def _build_command(self, node: DbtManifestNode, action: NodeAction) -> list[str]:
         return [
             "dbt",
             action.value,
             "--select",
-            node_id,
-            "--project-dir",
-            str(self._runtime_profile.paths.project_dir),
+            node.name,
             "--profiles-dir",
             str(self._runtime_profile.paths.profiles_dir),
-            "--target",
-            self._runtime_profile.target.name,
         ]
 
     def _resolve_compiled_sql(self, node: DbtManifestNode) -> str | None:
